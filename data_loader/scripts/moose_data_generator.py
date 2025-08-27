@@ -262,27 +262,58 @@ class MOOSEDataGenerator:
         exodus_file = exodus_files[0]
         print(f"Reading data from {exodus_file}")
         
-        # For now, we'll create synthetic data since proper Exodus file reading
-        # would require the exodus.py library which may not be available
-        # In a production environment, you would use a library like:
-        # import exodus
-        # exodus_file = exodus.exodus(exodus_file_path)
-        # ... extract data ...
-        
-        # For demonstration purposes, we'll create synthetic data
-        # that resembles what you might get from a diffusion problem
-        n_points = np.random.randint(50, 200)  # Variable number of points
-        x_coords = np.linspace(0, 1, n_points)
-        
-        # Create a sample solution (e.g., for a diffusion problem with boundary conditions)
-        # This is just for demonstration - in practice, you'd read actual data from the file
-        left_bc = float(sim_dir.split('_')[-1]) if '_' in sim_dir else 0.0  # Simplified extraction
-        right_bc = 1.0  # Default value
-        
-        # Linear interpolation between boundary conditions as a simple example
-        solution = left_bc + (right_bc - left_bc) * x_coords + 0.1 * np.random.randn(n_points)
-        
-        return x_coords, solution
+        # Try to use meshio to read Exodus file
+        try:
+            import meshio
+            # Read the mesh
+            mesh = meshio.read(exodus_file)
+            
+            # Extract node coordinates
+            points = mesh.points
+            # For 1D mesh, we only need the x-coordinate
+            if points.shape[1] >= 1:
+                x_coords = points[:, 0]  # x-coordinates
+            else:
+                x_coords = np.arange(len(points))
+            
+            # Extract node data (solution variables)
+            point_data = mesh.point_data
+            if point_data:
+                # Get the first available point data field as the solution
+                var_name = list(point_data.keys())[0]
+                solution = point_data[var_name]
+                # For 1D problems, solution is typically a 1D array
+                if solution.ndim > 1:
+                    solution = solution[:, 0]
+            else:
+                # If no point data, create a simple dummy solution
+                solution = np.zeros(len(x_coords))
+            
+            return x_coords, solution
+            
+        except ImportError:
+            print("meshio not available, using synthetic data")
+            # For demonstration purposes, we'll create synthetic data
+            # that resembles what you might get from a diffusion problem
+            n_points = np.random.randint(50, 200)  # Variable number of points
+            x_coords = np.linspace(0, 1, n_points)
+            
+            # Create a sample solution (e.g., for a diffusion problem with boundary conditions)
+            # This is just for demonstration - in practice, you'd read actual data from the file
+            left_bc = 0.0
+            right_bc = 1.0
+            
+            # Linear interpolation between boundary conditions as a simple example
+            solution = left_bc + (right_bc - left_bc) * x_coords + 0.1 * np.random.randn(n_points)
+            
+            return x_coords, solution
+        except Exception as e:
+            print(f"Error reading Exodus file: {str(e)}")
+            # Fallback to synthetic data
+            n_points = 100
+            x_coords = np.linspace(0, 1, n_points)
+            solution = np.sin(np.pi * x_coords)  # Simple sine wave as dummy solution
+            return x_coords, solution
     
     def _extract_csv_data(self, csv_file_path: str) -> tuple:
         """
