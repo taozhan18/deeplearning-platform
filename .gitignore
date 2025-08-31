@@ -194,3 +194,5 @@ output*
 
 # MOOSE automation outputs
 /home/zt/workspace/deeplearning-platform/data_loader/scripts/test_data_extraction/
+examples/
+*.i
