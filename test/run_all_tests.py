@@ -8,14 +8,15 @@ import os
 import sys
 import subprocess
 from pathlib import Path
+import json
 
 
 class ProjectTestRunner:
     """项目级测试运行器"""
     
     def __init__(self):
-        self.project_root = Path(__file__).parent
-        self.test_root = self.project_root / "test"
+        self.project_root = Path(__file__).parent.parent
+        self.test_root = Path(__file__).parent
         self.test_results = {}
         
     def find_test_directories(self):
@@ -132,6 +133,162 @@ class ProjectTestRunner:
                     except Exception as e:
                         print(f"❌ 运行 {dir_name} 自定义测试时出错: {e}")
                         self.test_results[f"{dir_name}_custom"] = "ERROR"
+    
+    def run_single_test(self, test_file_path):
+        """运行单个测试文件"""
+        test_path = Path(test_file_path)
+        if not test_path.exists():
+            print(f"❌ 测试文件不存在: {test_file_path}")
+            return False
+            
+        test_dir = test_path.parent
+        test_name = test_path.name
+        
+        print(f"\n🔍 运行单个测试: {test_name}")
+        print("-" * 50)
+        
+        if test_name.startswith('test_') and test_name.endswith('.py'):
+            # pytest测试
+            return self.run_pytest_in_directory(test_dir)
+        elif 'integration' in test_name:
+            # 集成测试
+            return self.run_integration_test_file(test_dir, test_path)
+        else:
+            # 自定义测试
+            return self.run_custom_test_file(test_dir, test_path)
+    
+    def run_integration_test_file(self, test_dir, test_file):
+        """运行单个集成测试文件"""
+        test_name = test_file.name
+        print(f"🔗 运行集成测试: {test_name}")
+        print("-" * 50)
+        
+        try:
+            result = subprocess.run([
+                sys.executable, str(test_file)
+            ], capture_output=True, text=True, cwd=str(test_dir))
+            
+            success = result.returncode == 0
+            if success:
+                print(f"✅ {test_name} 集成测试通过!")
+                self.test_results[test_name] = "PASSED"
+            else:
+                print(f"❌ {test_name} 集成测试失败:")
+                if result.stdout:
+                    print(result.stdout)
+                if result.stderr:
+                    print(result.stderr)
+                self.test_results[test_name] = "FAILED"
+            
+            return success
+            
+        except Exception as e:
+            print(f"❌ 运行 {test_name} 集成测试时出错: {e}")
+            self.test_results[test_name] = "ERROR"
+            return False
+    
+    def run_custom_test_file(self, test_dir, test_file):
+        """运行单个自定义测试文件"""
+        test_name = test_file.name
+        print(f"⚙️  运行自定义测试: {test_name}")
+        print("-" * 50)
+        
+        try:
+            result = subprocess.run([
+                sys.executable, str(test_file)
+            ], capture_output=True, text=True, cwd=str(test_dir))
+            
+            success = result.returncode == 0
+            if success:
+                print(f"✅ {test_name} 自定义测试通过!")
+                self.test_results[test_name] = "PASSED"
+            else:
+                print(f"❌ {test_name} 自定义测试失败:")
+                if result.stdout:
+                    print(result.stdout)
+                if result.stderr:
+                    print(result.stderr)
+                self.test_results[test_name] = "FAILED"
+            
+            return success
+            
+        except Exception as e:
+            print(f"❌ 运行 {test_name} 自定义测试时出错: {e}")
+            self.test_results[test_name] = "ERROR"
+            return False
+    
+    def get_detailed_test_report(self):
+        """获取详细测试报告"""
+        report = {
+            "summary": {},
+            "failed_tests": {},
+            "passed_tests": {}
+        }
+        
+        test_dirs = self.find_test_directories()
+        
+        for test_dir in test_dirs:
+            dir_name = test_dir.name
+            
+            # 检查pytest测试
+            pytest_files = list(test_dir.glob("test_*.py")) + list(test_dir.glob("*_test.py"))
+            for test_file in pytest_files:
+                test_name = test_file.name
+                
+                try:
+                    result = subprocess.run([
+                        sys.executable, '-m', 'pytest', str(test_file), '-v', '--tb=short'
+                    ], capture_output=True, text=True, cwd=str(test_dir), timeout=30)
+                    
+                    success = result.returncode == 0
+                    if success:
+                        report["passed_tests"][f"{dir_name}/{test_name}"] = "PASSED"
+                    else:
+                        # 提取失败信息
+                        failure_info = self.extract_failure_info(result.stdout, result.stderr)
+                        report["failed_tests"][f"{dir_name}/{test_name}"] = failure_info
+                        
+                except Exception as e:
+                    report["failed_tests"][f"{dir_name}/{test_name}"] = str(e)
+        
+        return report
+    
+    def extract_failure_info(self, stdout, stderr):
+        """提取失败信息"""
+        failure_lines = []
+        lines = (stdout + stderr).split('\n')
+        
+        capture = False
+        for line in lines:
+            if 'FAILED' in line or 'ERROR' in line:
+                capture = True
+            if capture and line.strip():
+                failure_lines.append(line.strip())
+                if len(failure_lines) >= 5:  # 限制输出长度
+                    break
+        
+        return '\n'.join(failure_lines) if failure_lines else "Unknown error"
+    
+    def show_detailed_failures(self):
+        """显示详细失败信息"""
+        report = self.get_detailed_test_report()
+        
+        print("\n" + "=" * 60)
+        print("📊 详细测试报告")
+        print("=" * 60)
+        
+        if report["passed_tests"]:
+            print("\n✅ 通过的测试:")
+            for test_name in report["passed_tests"]:
+                print(f"  {test_name}")
+        
+        if report["failed_tests"]:
+            print("\n❌ 失败的测试:")
+            for test_name, error_info in report["failed_tests"].items():
+                print(f"  {test_name}:")
+                print(f"    {error_info}")
+        
+        return len(report["failed_tests"]) == 0
     
     def run_all_tests(self, mode="all"):
         """运行所有测试"""

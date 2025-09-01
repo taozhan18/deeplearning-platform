@@ -134,7 +134,7 @@ def test_mlp_hyperparameters():
     model_manager = ModelManager({})
     
     # Get MLP hyperparameters
-    hyperparams = model_manager.get_model_hyperparameters('mlp')
+    hyperparams = model_manager.get_model_parameters('mlp')
     print(f"MLP hyperparameters: {list(hyperparams.keys())}")
     
     # Check if all expected hyperparameters are present
