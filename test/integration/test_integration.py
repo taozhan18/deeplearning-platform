@@ -424,6 +424,62 @@ def test_unet_integration():
             print(f"❌ UNet integration test failed: {e}")
             return False
 
+def test_transolver_integration():
+    """Test Transolver integration with spatial data (simplified approach)"""
+    print("🧪 Testing Transolver Integration...")
+    
+    # Test the Transolver model directly with simple data
+    try:
+        import sys
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'model_architecture', 'src'))
+        from transolver.transolver import Transolver
+        import torch
+        
+        # Create simple spatial data
+        batch_size = 4
+        num_points = 100  # 10x10 grid
+        space_dim = 2
+        
+        # Generate coordinates on a 2D grid
+        x = torch.linspace(0, 1, 10)
+        y = torch.linspace(0, 1, 10)
+        X, Y = torch.meshgrid(x, y, indexing='ij')
+        coords = torch.stack([X.flatten(), Y.flatten()], dim=-1)  # (100, 2)
+        
+        # Create batch data
+        batch_coords = coords.unsqueeze(0).expand(batch_size, -1, -1)  # (batch, 100, 2)
+        
+        # Create Transolver model with adjusted parameters
+        model = Transolver(
+            space_dim=2,
+            out_dim=1,
+            n_hidden=128,
+            n_layers=2,
+            n_head=4,
+            dropout=0.1,
+            H=10,
+            W=10,
+            fun_dim=1  # Function dimension for targets
+        )
+        
+        # Test forward pass
+        with torch.no_grad():
+            # Create dummy function values
+            fx = torch.randn(batch_size, 100, 1)
+            output = model(batch_coords, fx=fx)
+            
+        expected_shape = (batch_size, 100, 1)
+        if output.shape == expected_shape:
+            print("✅ Transolver integration test passed (model architecture test)")
+            return True
+        else:
+            print(f"❌ Transolver output shape mismatch: {output.shape}, expected: {expected_shape}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Transolver integration test failed: {e}")
+        return False
+
 def main():
     """Run all integration tests"""
     print("🚀 Running Comprehensive Integration Tests")
@@ -434,6 +490,7 @@ def main():
         ("FNO", test_fno_integration),
         ("UNet", test_unet_integration),
         ("Transformer", test_transformer_integration),
+        ("Transolver", test_transolver_integration),
         ("MeshGraphNet", test_meshgraphnet_integration)
     ]
     

@@ -6,19 +6,20 @@ data:
   test_targets_path: "sequence_test_targets.npz"
   batch_size: 32
   shuffle: true
-  normalize: true
+  normalize: false
   normalization_method: "standard"
 
 model:
   name: "transolver"
   parameters:
-    input_dim: 10       # Input feature dimension
-    output_dim: 1       # Output dimension
-    hidden_dim: 256     # Hidden dimension
-    num_layers: 6       # Number of layers
-    num_heads: 8        # Number of attention heads
-    seq_length: 100     # Sequence length
+    space_dim: 2        # Spatial dimension (matches input coordinates)
+    out_dim: 1          # Output dimension
+    n_hidden: 256       # Hidden dimension
+    n_layers: 6         # Number of layers
+    n_head: 8           # Number of attention heads
     dropout: 0.1
+    H: 25               # Height dimension (matches grid size)
+    W: 25               # Width dimension (matches grid size)
 
 training:
   epochs: 10
