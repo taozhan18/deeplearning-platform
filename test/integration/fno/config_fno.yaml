@@ -1,0 +1,46 @@
+# FNO Configuration for Grid Data (batch, channels, height, width)
+data:
+  train_features_path: "grid_train_features.npz"
+  train_targets_path: "grid_train_targets.npz"
+  test_features_path: "grid_test_features.npz"
+  test_targets_path: "grid_test_targets.npz"
+  batch_size: 16
+  shuffle: true
+  normalize: false  # Disable normalization for 4D data
+  normalization_method: "standard"
+
+model:
+  name: "fno"
+  parameters:
+    in_channels: 3      # Number of input channels
+    out_channels: 1     # Number of output channels
+    num_fno_modes: 12   # Fourier modes in x/y direction
+    latent_channels: 32 # Hidden dimension
+    num_fno_layers: 4   # Number of FNO layers
+    dimension: 2        # 2D spatial data
+
+training:
+  epochs: 10
+  device: "cpu"
+  early_stopping: true
+  patience: 20
+
+optimizer:
+  name: "adam"
+  parameters:
+    lr: 0.001
+    weight_decay: 0.0001
+
+criterion:
+  name: "mse"
+  parameters: {}
+
+scheduler:
+  name: "cosine"
+  parameters:
+    T_max: 100
+    eta_min: 0.000001
+
+output:
+  model_path: "trained_fno_model.pth"
+  history_path: "fno_training_history.json"

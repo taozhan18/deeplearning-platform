@@ -1,0 +1,46 @@
+# MLP Configuration for Tabular Data (batch, features)
+data:
+  train_features_path: "tabular_train_features.npz"
+  train_targets_path: "tabular_train_targets.npz"
+  test_features_path: "tabular_test_features.npz"
+  test_targets_path: "tabular_test_targets.npz"
+  batch_size: 64
+  shuffle: true
+  normalize: true
+  normalization_method: "standard"
+
+model:
+  name: "mlp"
+  parameters:
+    in_features: 20  # Number of features
+    layer_sizes: 128
+    out_features: 1  # Regression
+    num_layers: 3
+    activation_fn: "relu"
+    dropout: 0.1
+
+training:
+  epochs: 50
+  device: "cuda"
+  early_stopping: true
+  patience: 10
+
+optimizer:
+  name: "adam"
+  parameters:
+    lr: 0.001
+    weight_decay: 0.0001
+
+criterion:
+  name: "mse"
+  parameters: {}
+
+scheduler:
+  name: "step"
+  parameters:
+    step_size: 20
+    gamma: 0.5
+
+output:
+  model_path: "trained_mlp_model.pth"
+  history_path: "mlp_training_history.json"

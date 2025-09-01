@@ -1,0 +1,46 @@
+# UNet Configuration for Grid Data (batch, channels, height, width)
+data:
+  train_features_path: "grid_train_features.npz"
+  train_targets_path: "grid_train_targets.npz"
+  test_features_path: "grid_test_features.npz"
+  test_targets_path: "grid_test_targets.npz"
+  batch_size: 8
+  shuffle: true
+  normalize: false
+  normalization_method: "standard"
+
+model:
+  name: "unet"
+  parameters:
+    in_channels: 3      # Number of input channels
+    out_channels: 1     # Number of output channels
+    features: [64, 128, 256, 512]  # Feature channels at each level
+    activation: "relu"
+    normalization: "batchnorm"
+    bilinear: true
+
+training:
+  epochs: 10
+  device: "cuda"
+  early_stopping: true
+  patience: 15
+
+optimizer:
+  name: "adam"
+  parameters:
+    lr: 0.001
+    weight_decay: 0.0001
+
+criterion:
+  name: "mse"
+  parameters: {}
+
+scheduler:
+  name: "step"
+  parameters:
+    step_size: 30
+    gamma: 0.5
+
+output:
+  model_path: "trained_unet_model.pth"
+  history_path: "unet_training_history.json"

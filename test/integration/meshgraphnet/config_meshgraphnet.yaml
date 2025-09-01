@@ -1,0 +1,47 @@
+# MeshGraphNet Configuration for Graph Structure Data
+# Note: MeshGraphNet expects node features and edge connectivity
+data:
+  train_features_path: "graph_train_features.npz"
+  train_targets_path: "graph_train_targets.npz"
+  test_features_path: "graph_test_features.npz"
+  test_targets_path: "graph_test_targets.npz"
+  batch_size: 16
+  shuffle: true
+  normalize: false
+  normalization_method: "standard"
+
+model:
+  name: "meshgraphnet"
+  parameters:
+    input_dim_nodes: 10       # Node feature dimension
+    input_dim_edges: 3        # Edge feature dimension
+    output_dim: 1             # Output dimension
+    processor_size: 6         # Number of message passing layers
+    hidden_dim_processor: 128 # Hidden dimension
+    dropout: 0.1
+
+training:
+  epochs: 20
+  device: "cuda"
+  early_stopping: true
+  patience: 30
+
+optimizer:
+  name: "adam"
+  parameters:
+    lr: 0.001
+    weight_decay: 0.0001
+
+criterion:
+  name: "mse"
+  parameters: {}
+
+scheduler:
+  name: "step"
+  parameters:
+    step_size: 50
+    gamma: 0.5
+
+output:
+  model_path: "trained_meshgraphnet_model.pth"
+  history_path: "meshgraphnet_training_history.json"

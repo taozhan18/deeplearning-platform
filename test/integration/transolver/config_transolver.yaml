@@ -1,0 +1,48 @@
+# Transolver Configuration for Sequence Data (batch, time_steps, features)
+data:
+  train_features_path: "sequence_train_features.npz"
+  train_targets_path: "sequence_train_targets.npz"
+  test_features_path: "sequence_test_features.npz"
+  test_targets_path: "sequence_test_targets.npz"
+  batch_size: 32
+  shuffle: true
+  normalize: true
+  normalization_method: "standard"
+
+model:
+  name: "transolver"
+  parameters:
+    input_dim: 10       # Input feature dimension
+    output_dim: 1       # Output dimension
+    hidden_dim: 256     # Hidden dimension
+    num_layers: 6       # Number of layers
+    num_heads: 8        # Number of attention heads
+    seq_length: 100     # Sequence length
+    dropout: 0.1
+
+training:
+  epochs: 10
+  device: "cuda"
+  early_stopping: true
+  patience: 15
+
+optimizer:
+  name: "adam"
+  parameters:
+    lr: 0.001
+    weight_decay: 0.0001
+    betas: [0.9, 0.98]
+
+criterion:
+  name: "mse"
+  parameters: {}
+
+scheduler:
+  name: "cosine"
+  parameters:
+    T_max: 100
+    eta_min: 1e-6
+
+output:
+  model_path: "trained_transolver_model.pth"
+  history_path: "transolver_training_history.json"

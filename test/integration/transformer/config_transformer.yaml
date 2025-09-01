@@ -1,0 +1,49 @@
+# Transformer Configuration for Sequence Data (batch, time_steps, features)
+data:
+  train_features_path: "sequence_train_features.npz"
+  train_targets_path: "sequence_train_targets.npz"
+  test_features_path: "sequence_test_features.npz"
+  test_targets_path: "sequence_test_targets.npz"
+  batch_size: 32
+  shuffle: true
+  normalize: false
+  normalization_method: "standard"
+
+model:
+  name: "transformer"
+  parameters:
+    d_model: 128        # Model dimension
+    nhead: 8            # Number of attention heads
+    num_layers: 6       # Number of transformer layers
+    d_ff: 512           # Feed-forward dimension
+    input_dim: 10       # Input feature dimension
+    output_dim: 1       # Output dimension
+    max_seq_length: 100 # Maximum sequence length
+    dropout: 0.1
+
+training:
+  epochs: 10
+  device: "cuda"
+  early_stopping: true
+  patience: 15
+
+optimizer:
+  name: "adam"
+  parameters:
+    lr: 0.001
+    weight_decay: 0.0001
+    betas: [0.9, 0.98]
+
+criterion:
+  name: "mse"
+  parameters: {}
+
+scheduler:
+  name: "cosine"
+  parameters:
+    T_max: 100
+    eta_min: 0.000001
+
+output:
+  model_path: "trained_transformer_model.pth"
+  history_path: "transformer_training_history.json"
