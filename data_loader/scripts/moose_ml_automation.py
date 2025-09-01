@@ -316,7 +316,7 @@ class EnhancedMOOSEDataGenerator:
         output_variables: List[str] = None,
         normalize: bool = True,
     ) -> Dict[str, np.ndarray]:
-        """Generate ML-ready dataset from simulation results"""
+        """Generate ML-ready dataset from simulation results with parameter-to-result mapping"""
 
         dataset_path = Path(dataset_dir)
         dataset_path.mkdir(parents=True, exist_ok=True)
@@ -328,18 +328,22 @@ class EnhancedMOOSEDataGenerator:
 
         # Extract parameters
         parameters = []
-        input_fields = []
         output_fields = []
+        parameter_result_mapping = []
 
         # Determine variables to use
         first_result = successful_results[0]
         available_vars = list(first_result["data"].keys())
 
-        input_vars = input_variables or [v for v in available_vars if v.startswith("x")]
-        output_vars = output_variables or [v for v in available_vars if not v.startswith("x")]
+        # Only extract output variables (solution/results)
+        output_vars = output_variables or [
+            v for v in available_vars if v in ["u", "v", "p", "T", "c", "phi", "stress", "strain"]
+        ]
+        if not output_vars:
+            # Fallback to all non-coordinate variables
+            output_vars = [v for v in available_vars if not v.startswith("x")]
 
         print(f"Processing {len(successful_results)} successful simulations")
-        print(f"Input variables: {input_vars}")
         print(f"Output variables: {output_vars}")
 
         for result in successful_results:
@@ -347,56 +351,89 @@ class EnhancedMOOSEDataGenerator:
             params = list(result["parameters"].values())
             parameters.append(params)
 
-            # Input fields (coordinates)
-            input_data = []
-            for var in input_vars:
-                if var in result["data"]:
-                    input_data.extend(result["data"][var])
-            input_fields.append(input_data)
-
-            # Output fields (solution variables)
+            # Output fields (solution variables only)
             output_data = []
             for var in output_vars:
                 if var in result["data"]:
                     output_data.extend(result["data"][var])
             output_fields.append(output_data)
 
+            # Create parameter-to-result mapping
+            mapping_entry = {
+                "parameters": result["parameters"],  # Keep as dict for clarity
+                "parameter_vector": params,  # Flat parameter vector
+                "results": {var: result["data"][var] for var in output_vars if var in result["data"]},
+                "simulation_id": result["index"],
+                "sim_dir": result["sim_dir"],
+            }
+            parameter_result_mapping.append(mapping_entry)
+
         # Convert to numpy arrays
         parameters = np.array(parameters)
-        input_fields = np.array(input_fields)
         output_fields = np.array(output_fields)
 
-        # Normalize if requested
+        # Normalize output fields if requested
         if normalize:
-            input_fields = self._normalize_data(input_fields)
             output_fields = self._normalize_data(output_fields)
 
-        # Save dataset
+            # Update mapping with normalized data
+            for i, mapping in enumerate(parameter_result_mapping):
+                # Create normalized results from normalized output fields
+                start_idx = 0
+                normalized_results = {}
+                for var in output_vars:
+                    if var in mapping["results"]:
+                        var_data = mapping["results"][var]
+                        end_idx = start_idx + len(var_data)
+                        normalized_results[var] = output_fields[i][start_idx:end_idx].tolist()
+                        start_idx = end_idx
+                mapping["normalized_results"] = normalized_results
+
+        # Save dataset - only parameters and output_data (no input_data)
         np.save(dataset_path / "parameters.npy", parameters)
-        np.save(dataset_path / "input_data.npy", input_fields)
         np.save(dataset_path / "output_data.npy", output_fields)
+
+        # Save parameter-to-result mapping
+        mapping_file = dataset_path / "parameter_result_mapping.json"
+        with open(mapping_file, "w") as f:
+
+            def convert_numpy_for_json(obj):
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                elif isinstance(obj, np.integer):
+                    return int(obj)
+                elif isinstance(obj, np.floating):
+                    return float(obj)
+                elif isinstance(obj, dict):
+                    return {k: convert_numpy_for_json(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_numpy_for_json(item) for item in obj]
+                return obj
+
+            json.dump(convert_numpy_for_json(parameter_result_mapping), f, indent=2)
 
         # Save metadata
         metadata = {
             "creation_time": datetime.now().isoformat(),
             "num_samples": len(successful_results),
-            "input_variables": input_vars,
             "output_variables": output_vars,
             "parameter_names": list(successful_results[0]["parameters"].keys()),
             "normalize": normalize,
+            "parameter_result_mapping_file": str(mapping_file),
         }
 
         with open(dataset_path / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
 
         print(f"✓ ML dataset saved to {dataset_dir}")
-        print(f"  Shape: parameters={parameters.shape}, input={input_fields.shape}, output={output_fields.shape}")
+        print(f"  Shape: parameters={parameters.shape}, output={output_fields.shape}")
+        print(f"  Parameter-result mapping saved to: {mapping_file}")
 
         return {
             "parameters": parameters,
-            "input_data": input_fields,
             "output_data": output_fields,
             "metadata": metadata,
+            "parameter_result_mapping": parameter_result_mapping,
         }
 
     def _generate_parameter_sets(self, param_config: Dict[str, Any], num_samples: int) -> List[Dict[str, Any]]:
@@ -522,26 +559,24 @@ class MOOSEMLPipeline:
         """Create training configuration for the low-code platform"""
 
         # Determine data dimensions
-        input_shape = dataset["input_data"].shape
+        parameters_shape = dataset["parameters"].shape
         output_shape = dataset["output_data"].shape
 
         config = {
             "data": {
-                "train_features_path": f"{self.config['dataset_dir']}/input_data.npy",
+                "train_features_path": f"{self.config['dataset_dir']}/parameters.npy",
                 "train_targets_path": f"{self.config['dataset_dir']}/output_data.npy",
-                "test_features_path": f"{self.config['dataset_dir']}/input_data.npy",  # Use same for now
+                "test_features_path": f"{self.config['dataset_dir']}/parameters.npy",  # Use same for now
                 "test_targets_path": f"{self.config['dataset_dir']}/output_data.npy",
                 "batch_size": self.config.get("batch_size", 16),
             },
             "model": {
-                "name": self.config.get("model_name", "fno"),
+                "name": self.config.get("model_name", "mlp"),
                 "parameters": {
-                    "in_channels": 1,
-                    "out_channels": 1,
-                    "dimension": 1,
-                    "latent_channels": 32,
-                    "num_fno_layers": 4,
-                    "num_fno_modes": 16,
+                    "in_features": parameters_shape[1],  # Number of parameters
+                    "out_features": output_shape[1] if len(output_shape) > 1 else 1,
+                    "layer_sizes": 32,
+                    "num_layers": 3,
                 },
             },
             "training": {
@@ -555,11 +590,6 @@ class MOOSEMLPipeline:
                 "history_path": f"{self.config['dataset_dir']}/training_history.json",
             },
         }
-
-        # Adjust model parameters based on data
-        if len(input_shape) == 3:  # 2D data
-            config["model"]["parameters"]["dimension"] = 2
-            config["model"]["parameters"]["num_fno_modes"] = [16, 16]
 
         return config
 
@@ -580,6 +610,29 @@ class MOOSEMLPipeline:
             return
 
         print(f"✓ Training configuration saved to {output_path}")
+
+    def extract_parameter_results_mapping(self, dataset_dir: str) -> Dict[str, Any]:
+        """Extract and return parameter-to-results mapping from dataset"""
+
+        dataset_path = Path(dataset_dir)
+        mapping_file = dataset_path / "parameter_result_mapping.json"
+
+        if not mapping_file.exists():
+            raise FileNotFoundError(f"Parameter-result mapping file not found: {mapping_file}")
+
+        with open(mapping_file, "r") as f:
+            mapping = json.load(f)
+
+        # Also load the numpy arrays for direct access
+        parameters = np.load(dataset_path / "parameters.npy")
+        output_data = np.load(dataset_path / "output_data.npy")
+
+        return {
+            "mapping": mapping,
+            "parameters": parameters,
+            "output_data": output_data,
+            "parameter_names": [list(m["parameters"].keys()) for m in mapping][0] if mapping else [],
+        }
 
 
 def create_sample_config():
@@ -637,9 +690,39 @@ def main():
     results = pipeline.run_complete_pipeline()
 
     print("\n🎉 Pipeline completed successfully!")
-    print("Next steps:")
     print(f"1. Review dataset: {results['config_path'].replace('training_config.yaml', '')}")
-    print(f"2. Start training: python main/train.py --config {results['config_path']}")
+    print(f"2. Training config: {results['config_path']}")
+
+    # Ask user if they want to run training now
+    import subprocess
+
+    run_training = input("\nDo you want to run training now? (y/n): ").strip().lower()
+    if run_training == "y":
+        try:
+            cmd = [
+                sys.executable,
+                "/home/zt/workspace/deeplearning-platform/main/train.py",
+                "--config",
+                results["config_path"],
+            ]
+            print(f"Executing: {' '.join(cmd)}")
+            subprocess.run(cmd, check=True)
+            print("✓ Training completed!")
+        except subprocess.CalledProcessError as e:
+            print(f"✗ Training failed: {e}")
+        except FileNotFoundError:
+            print("Training script not found. You can run it manually:")
+            print(f"python main/train.py --config {results['config_path']}")
+    else:
+        print("To run training later:")
+        print(f"python main/train.py --config {results['config_path']}")
+
+
+def extract_mapping_from_dataset(dataset_dir: str) -> Dict[str, Any]:
+    """Standalone function to extract parameter-to-results mapping from a dataset directory"""
+
+    generator = EnhancedMOOSEDataGenerator()
+    return generator.extract_parameter_results_mapping(dataset_dir)
 
 
 if __name__ == "__main__":

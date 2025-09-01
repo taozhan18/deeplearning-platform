@@ -38,42 +38,42 @@ class ModelManager:
         """
         # Register FNO model
         try:
-            from .fno.fno import FNO
+            from fno.fno import FNO
             self._register_model('fno', FNO, FNO.HYPERPARAMETERS)
         except ImportError as e:
             print(f"Warning: FNO model could not be registered: {e}")
         
         # Register MLP model
         try:
-            from .mlp.mlp import MLP
+            from mlp.mlp import MLP
             self._register_model('mlp', MLP, MLP.HYPERPARAMETERS)
         except ImportError as e:
             print(f"Warning: MLP model could not be registered: {e}")
         
         # Register UNet model
         try:
-            from .unet.unet import UNet
+            from unet.unet import UNet
             self._register_model('unet', UNet, UNet.HYPERPARAMETERS)
         except ImportError as e:
             print(f"Warning: UNet model could not be registered: {e}")
             
         # Register Transformer model
         try:
-            from .transformer.transformer import Transformer
+            from transformer.transformer import Transformer
             self._register_model('transformer', Transformer, Transformer.HYPERPARAMETERS)
         except ImportError as e:
             print(f"Warning: Transformer model could not be registered: {e}")
             
         # Register Transolver model
         try:
-            from .transolver.transolver import Transolver
+            from transolver.transolver import Transolver
             self._register_model('transolver', Transolver, Transolver.HYPERPARAMETERS)
         except ImportError as e:
             print(f"Warning: Transolver model could not be registered: {e}")
 
         # Register MeshGraphNet model
         try:
-            from .meshgraphnet.meshgraphnet import MeshGraphNet
+            from meshgraphnet.meshgraphnet import MeshGraphNet
             self._register_model('meshgraphnet', MeshGraphNet, MeshGraphNet.HYPERPARAMETERS)
         except ImportError as e:
             print(f"Warning: MeshGraphNet model could not be registered: {e}")
