@@ -28,6 +28,7 @@ class TrainingEngine:
         self.scheduler = None
         self.device = torch.device(config.get('device', 'cpu'))
         self.epochs = config.get('epochs', 10)
+        self.preprocess_fn = config.get('preprocess_fn', None)
     
     def set_model(self, model: nn.Module):
         """
@@ -121,7 +122,12 @@ class TrainingEngine:
         total = 0
         
         for batch_idx, (data, target) in enumerate(train_loader):
-            data, target = data.to(self.device), target.to(self.device)
+            # Handle device placement for both single tensors and dicts
+            if isinstance(data, dict):
+                data = {key: value.to(self.device) for key, value in data.items()}
+            else:
+                data = data.to(self.device)
+            target = target.to(self.device)
             
             # Special handling for different criterion types
             if isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
@@ -138,7 +144,15 @@ class TrainingEngine:
                     target = target.float()
             
             self.optimizer.zero_grad()
-            output = self.model(data)
+            
+            # Handle custom preprocessing for multi-source data
+            if self.preprocess_fn is not None:
+                processed_data = self.preprocess_fn(data)
+                output = self.model(processed_data)
+            else:
+                # Default behavior: direct model forward pass
+                output = self.model(data)
+                
             loss = self.criterion(output, target)
             loss.backward()
             self.optimizer.step()
@@ -184,7 +198,12 @@ class TrainingEngine:
         
         with torch.no_grad():
             for batch_idx, (data, target) in enumerate(test_loader):
-                data, target = data.to(self.device), target.to(self.device)
+                # Handle device placement for both single tensors and dicts
+                if isinstance(data, dict):
+                    data = {key: value.to(self.device) for key, value in data.items()}
+                else:
+                    data = data.to(self.device)
+                target = target.to(self.device)
                 
                 # Special handling for different criterion types
                 if isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
@@ -200,7 +219,14 @@ class TrainingEngine:
                     if target.dtype != torch.float:
                         target = target.float()
                 
-                output = self.model(data)
+                # Handle custom preprocessing for multi-source data
+                if self.preprocess_fn is not None:
+                    processed_data = self.preprocess_fn(data)
+                    output = self.model(processed_data)
+                else:
+                    # Default behavior: direct model forward pass
+                    output = self.model(data)
+                    
                 loss = self.criterion(output, target)
                 
                 total_loss += loss.item()
@@ -305,6 +331,52 @@ class TrainingEngine:
             raise ValueError("Model must be configured before loading")
         
         # Load model state dict
-        self.model.load_state_dict(torch.load(path, map_location=self.device))
+        self.model.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
         self.model.to(self.device)
         print(f"Model loaded from {path}")
+    
+    def set_preprocess_fn(self, preprocess_fn):
+        """
+        Set custom preprocessing function for multi-source data
+        
+        Args:
+            preprocess_fn: Function to preprocess input data before model forward pass
+                           Should accept data (tensor or dict) and return processed data
+        """
+        self.preprocess_fn = preprocess_fn
+    
+    @staticmethod
+    def create_concat_preprocess_fn():
+        """
+        Create a default preprocessing function for multi-source data
+        Concatenates multiple data sources along feature dimension
+        
+        Returns:
+            Function that concatenates dict values or returns single tensor
+        """
+        def concat_preprocess(data):
+            if isinstance(data, dict):
+                # Concatenate all sources along feature dimension
+                return torch.cat([data[key] for key in sorted(data.keys())], dim=1)
+            else:
+                # Single source data, return as-is
+                return data
+        return concat_preprocess
+    
+    @staticmethod
+    def create_select_preprocess_fn(source_key: str):
+        """
+        Create a preprocessing function that selects a specific source
+        
+        Args:
+            source_key: Key to select from multi-source data
+            
+        Returns:
+            Function that selects specific source or returns single tensor
+        """
+        def select_preprocess(data):
+            if isinstance(data, dict):
+                return data[source_key]
+            else:
+                return data
+        return select_preprocess

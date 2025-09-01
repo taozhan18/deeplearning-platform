@@ -1,23 +1,25 @@
 """
-Test script for training engine module
+Comprehensive test script for training engine module
+Tests multi-source data handling, custom preprocessing, and all training features
 """
 
 import sys
 import os
 import torch
 import torch.nn as nn
+import tempfile
+import shutil
 
 # Add the modules to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'training_engine', 'src'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'model_architecture', 'src'))
 
 from training_engine import TrainingEngine
-from model_manager import ModelTemplate
 
 
-def test_training_engine_functionality():
-    """Test the basic functionality of the training engine"""
-    print("Testing Training Engine Functionality...")
+def test_basic_training_engine():
+    """Test basic training engine initialization and configuration"""
+    print("Testing basic training engine functionality...")
     
     # Configuration
     config = {
@@ -27,97 +29,373 @@ def test_training_engine_functionality():
     
     # Initialize training engine
     training_engine = TrainingEngine(config)
-    print("Training engine initialized successfully")
+    assert training_engine.epochs == 2
+    assert str(training_engine.device) == 'cpu'
+    assert training_engine.preprocess_fn is None
     
-    # Create a simple model for testing
-    model = ModelTemplate(input_size=5, hidden_size=32, num_classes=10, dropout_rate=0.1)
+    print("✓ Basic initialization test passed")
+
+
+def test_model_configuration():
+    """Test model configuration and optimizer setup"""
+    print("Testing model configuration...")
+    
+    config = {'epochs': 1, 'device': 'cpu'}
+    training_engine = TrainingEngine(config)
+    
+    # Create a simple test model
+    model = nn.Sequential(
+        nn.Linear(10, 32),
+        nn.ReLU(),
+        nn.Linear(32, 5)
+    )
+    
     training_engine.set_model(model)
-    print("Model set successfully")
+    assert training_engine.model is not None
     
-    # Configure optimizer
+    # Test optimizer configuration
     training_engine.configure_optimizer('adam', lr=0.001)
-    print("Optimizer configured successfully")
+    assert isinstance(training_engine.optimizer, torch.optim.Adam)
     
-    # Configure criterion
-    training_engine.configure_criterion('cross_entropy')
-    print("Criterion configured successfully")
+    # Test criterion configuration
+    training_engine.configure_criterion('mse')
+    assert isinstance(training_engine.criterion, nn.MSELoss)
     
-    # Configure scheduler
+    # Test scheduler configuration
     training_engine.configure_scheduler('step', step_size=1, gamma=0.5)
-    print("Scheduler configured successfully")
+    assert isinstance(training_engine.scheduler, torch.optim.lr_scheduler.StepLR)
     
-    print("Training engine functionality test passed!")
+    print("✓ Model configuration test passed")
 
 
-def test_training_process():
-    """Test the training process"""
-    print("\nTesting Training Process...")
+def test_single_source_training():
+    """Test training with single source data (backward compatibility)"""
+    print("Testing single source training...")
     
-    # Configuration
-    config = {
-        'epochs': 2,
-        'device': 'cpu'
-    }
-    
-    # Initialize training engine
+    config = {'epochs': 2, 'device': 'cpu'}
     training_engine = TrainingEngine(config)
     
-    # Create a simple model for testing
-    model = ModelTemplate(input_size=5, hidden_size=32, num_classes=10, dropout_rate=0.1)
+    # Create simple model
+    model = nn.Linear(5, 1)
     training_engine.set_model(model)
+    training_engine.configure_optimizer('adam', lr=0.01)
+    training_engine.configure_criterion('mse')
     
-    # Configure optimizer and criterion
-    training_engine.configure_optimizer('adam', lr=0.001)
-    training_engine.configure_criterion('cross_entropy')
-    
-    # Create dummy data loaders
-    class DummyDataset(torch.utils.data.Dataset):
-        def __init__(self, size=100):
+    # Create dummy single source data
+    class SingleSourceDataset(torch.utils.data.Dataset):
+        def __init__(self, size=50):
             self.size = size
+            self.data = torch.randn(size, 5)
+            self.targets = torch.randn(size, 1)
             
         def __len__(self):
             return self.size
             
         def __getitem__(self, idx):
-            # Return random data and target
-            return torch.randn(5), torch.randint(0, 10, (1,)).item()
+            return self.data[idx], self.targets[idx]
     
-    train_dataset = DummyDataset(100)
-    test_dataset = DummyDataset(20)
+    train_dataset = SingleSourceDataset(50)
+    test_dataset = SingleSourceDataset(20)
     
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=16, shuffle=False)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=10, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=10, shuffle=False)
     
     # Run training
     history = training_engine.train(train_loader, test_loader)
     
-    # Check history
-    assert 'train_loss' in history
-    assert 'train_acc' in history
-    assert 'val_loss' in history
-    assert 'val_acc' in history
-    assert 'epochs' in history
+    assert len(history['train_loss']) == 2
+    assert len(history['val_loss']) == 2
+    print("✓ Single source training test passed")
+
+
+def test_multi_source_training():
+    """Test training with multi-source data and custom preprocessing"""
+    print("Testing multi-source training...")
     
-    print(f"Training history keys: {list(history.keys())}")
-    print(f"Number of epochs recorded: {len(history['epochs'])}")
+    # Test with concatenation preprocessing
+    config = {
+        'epochs': 2,
+        'device': 'cpu',
+        'preprocess_fn': TrainingEngine.create_concat_preprocess_fn()
+    }
     
-    print("Training process test passed!")
+    training_engine = TrainingEngine(config)
+    
+    # Create model that expects concatenated features
+    model = nn.Linear(8, 1)  # 3 + 5 = 8 features after concatenation
+    training_engine.set_model(model)
+    training_engine.configure_optimizer('adam', lr=0.01)
+    training_engine.configure_criterion('mse')
+    
+    # Create dummy multi-source data
+    class MultiSourceDataset(torch.utils.data.Dataset):
+        def __init__(self, size=50):
+            self.size = size
+            self.x1 = torch.randn(size, 3)  # Source 1: 3 features
+            self.x2 = torch.randn(size, 5)  # Source 2: 5 features
+            self.targets = torch.randn(size, 1)
+            
+        def __len__(self):
+            return self.size
+            
+        def __getitem__(self, idx):
+            return {'x1': self.x1[idx], 'x2': self.x2[idx]}, self.targets[idx]
+    
+    train_dataset = MultiSourceDataset(50)
+    test_dataset = MultiSourceDataset(20)
+    
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=10, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=10, shuffle=False)
+    
+    # Run training
+    history = training_engine.train(train_loader, test_loader)
+    
+    assert len(history['train_loss']) == 2
+    assert len(history['val_loss']) == 2
+    print("✓ Multi-source training test passed")
+
+
+def test_custom_preprocessing():
+    """Test custom preprocessing functions"""
+    print("Testing custom preprocessing...")
+    
+    # Create custom preprocessing function
+    def custom_preprocess(data):
+        if isinstance(data, dict):
+            # Weighted combination of sources
+            return 0.7 * data['x1'] + 0.3 * data['x2']
+        return data
+    
+    config = {
+        'epochs': 1,
+        'device': 'cpu',
+        'preprocess_fn': custom_preprocess
+    }
+    
+    training_engine = TrainingEngine(config)
+    
+    # Create model for processed features
+    model = nn.Linear(3, 1)  # After processing, we have 3 features
+    training_engine.set_model(model)
+    training_engine.configure_optimizer('adam', lr=0.01)
+    training_engine.configure_criterion('mse')
+    
+    # Test with same multi-source data
+    class MultiSourceDataset(torch.utils.data.Dataset):
+        def __init__(self, size=20):
+            self.size = size
+            self.x1 = torch.randn(size, 3)
+            self.x2 = torch.randn(size, 3)
+            self.targets = torch.randn(size, 1)
+            
+        def __len__(self):
+            return self.size
+            
+        def __getitem__(self, idx):
+            return {'x1': self.x1[idx], 'x2': self.x2[idx]}, self.targets[idx]
+    
+    dataset = MultiSourceDataset(20)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=5, shuffle=True)
+    
+    # Run training
+    history = training_engine.train(loader)
+    
+    assert len(history['train_loss']) == 1
+    print("✓ Custom preprocessing test passed")
+
+
+def test_preprocessing_helper_functions():
+    """Test the built-in preprocessing helper functions"""
+    print("Testing preprocessing helper functions...")
+    
+    # Test concatenation function
+    concat_fn = TrainingEngine.create_concat_preprocess_fn()
+    
+    # Test with dict data
+    data_dict = {'x1': torch.randn(4, 3), 'x2': torch.randn(4, 5)}
+    concatenated = concat_fn(data_dict)
+    assert concatenated.shape == (4, 8)  # 3 + 5 = 8 features
+    
+    # Test with single tensor
+    single_tensor = torch.randn(4, 10)
+    result = concat_fn(single_tensor)
+    assert torch.equal(result, single_tensor)
+    
+    # Test selection function
+    select_fn = TrainingEngine.create_select_preprocess_fn('x1')
+    selected = select_fn(data_dict)
+    assert torch.equal(selected, data_dict['x1'])
+    
+    print("✓ Preprocessing helper functions test passed")
+
+
+def test_classification_training():
+    """Test classification training with CrossEntropyLoss"""
+    print("Testing classification training...")
+    
+    config = {'epochs': 1, 'device': 'cpu'}
+    training_engine = TrainingEngine(config)
+    
+    model = nn.Sequential(
+        nn.Linear(4, 16),
+        nn.ReLU(),
+        nn.Linear(16, 3)  # 3 classes
+    )
+    training_engine.set_model(model)
+    training_engine.configure_optimizer('adam', lr=0.01)
+    training_engine.configure_criterion('cross_entropy')
+    
+    class ClassificationDataset(torch.utils.data.Dataset):
+        def __init__(self, size=30):
+            self.size = size
+            self.data = torch.randn(size, 4)
+            self.targets = torch.randint(0, 3, (size,))
+            
+        def __len__(self):
+            return self.size
+            
+        def __getitem__(self, idx):
+            return self.data[idx], self.targets[idx]
+    
+    dataset = ClassificationDataset(30)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=10, shuffle=True)
+    
+    history = training_engine.train(loader)
+    
+    assert len(history['train_loss']) == 1
+    assert len(history['train_acc']) == 1
+    print("✓ Classification training test passed")
+
+
+def test_model_save_load():
+    """Test model saving and loading functionality"""
+    print("Testing model save/load...")
+    
+    with tempfile.TemporaryDirectory() as temp_dir:
+        model_path = os.path.join(temp_dir, 'test_model.pth')
+        
+        # Create and train a simple model
+        config = {'epochs': 1, 'device': 'cpu'}
+        training_engine = TrainingEngine(config)
+        
+        model = nn.Linear(3, 1)
+        training_engine.set_model(model)
+        training_engine.configure_optimizer('adam', lr=0.01)
+        training_engine.configure_criterion('mse')
+        
+        # Create dummy data
+        data = torch.randn(10, 3)
+        targets = torch.randn(10, 1)
+        dataset = torch.utils.data.TensorDataset(data, targets)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=5)
+        
+        # Train and save
+        training_engine.train(loader)
+        training_engine.save_model(model_path)
+        
+        assert os.path.exists(model_path)
+        
+        # Load model into new engine
+        new_engine = TrainingEngine(config)
+        new_model = nn.Linear(3, 1)
+        new_engine.set_model(new_model)
+        new_engine.load_model(model_path)
+        
+        print("✓ Model save/load test passed")
+
+
+def test_scheduler_functionality():
+    """Test learning rate scheduler"""
+    print("Testing scheduler functionality...")
+    
+    config = {'epochs': 2, 'device': 'cpu'}
+    training_engine = TrainingEngine(config)
+    
+    model = nn.Linear(2, 1)
+    training_engine.set_model(model)
+    training_engine.configure_optimizer('adam', lr=0.1)
+    training_engine.configure_criterion('mse')
+    training_engine.configure_scheduler('step', step_size=1, gamma=0.5)
+    
+    # Get initial learning rate
+    initial_lr = training_engine.optimizer.param_groups[0]['lr']
+    
+    # Create dummy data
+    data = torch.randn(20, 2)
+    targets = torch.randn(20, 1)
+    dataset = torch.utils.data.TensorDataset(data, targets)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=10)
+    
+    training_engine.train(loader)
+    
+    # Check learning rate was reduced
+    final_lr = training_engine.optimizer.param_groups[0]['lr']
+    expected_lr = initial_lr * 0.25  # Applied twice (0.1 -> 0.05 -> 0.025)
+    assert abs(final_lr - expected_lr) < 1e-6, f"Expected LR: {expected_lr}, Actual LR: {final_lr}"
+    
+    print("✓ Scheduler functionality test passed")
+
+
+def test_error_handling():
+    """Test error handling and validation"""
+    print("Testing error handling...")
+    
+    training_engine = TrainingEngine({'epochs': 1})
+    
+    # Test missing model
+    try:
+        training_engine.configure_optimizer('adam')
+        assert False, "Should raise AttributeError for missing model"
+    except (ValueError, AttributeError):
+        pass
+    
+    # Test missing optimizer
+    model = nn.Linear(2, 1)
+    training_engine.set_model(model)
+    try:
+        training_engine.train_epoch([])
+        assert False, "Should raise ValueError for missing optimizer"
+    except ValueError:
+        pass
+    
+    print("✓ Error handling test passed")
 
 
 def main():
     """Main test function for training engine"""
-    print("Testing Training Engine Module")
-    print("=" * 35)
+    print("🚀 Testing Training Engine Module")
+    print("=" * 50)
     
-    # Test basic functionality
-    test_training_engine_functionality()
-    
-    # Test training process
-    test_training_process()
-    
-    print("\n" + "=" * 35)
-    print("All training engine tests completed successfully!")
+    try:
+        # Basic functionality tests
+        test_basic_training_engine()
+        test_model_configuration()
+        
+        # Training tests
+        test_single_source_training()
+        test_multi_source_training()
+        test_custom_preprocessing()
+        
+        # Helper functions
+        test_preprocessing_helper_functions()
+        test_classification_training()
+        
+        # Advanced features
+        test_model_save_load()
+        test_scheduler_functionality()
+        test_error_handling()
+        
+        print("\n" + "=" * 50)
+        print("🎉 All training engine tests passed!")
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ Test failed with error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 if __name__ == "__main__":
-    main()
+    success = main()
+    sys.exit(0 if success else 1)
