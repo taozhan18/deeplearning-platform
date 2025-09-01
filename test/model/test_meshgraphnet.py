@@ -6,7 +6,6 @@ Test script for MeshGraphNet model (DGL-free version)
 import sys
 import os
 import torch
-import numpy as np
 
 # Add project root to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -143,7 +142,7 @@ def main():
     
     try:
         # Test model creation
-        model = test_meshgraphnet_creation()
+        test_meshgraphnet_creation()
         
         # Test forward pass
         test_meshgraphnet_forward_pass()
