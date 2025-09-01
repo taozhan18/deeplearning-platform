@@ -494,6 +494,29 @@ class EnhancedMOOSEDataGenerator:
 
         return normalized
 
+    def extract_parameter_results_mapping(self, dataset_dir: str) -> Dict[str, Any]:
+        """Extract and return parameter-to-results mapping from a dataset directory"""
+
+        dataset_path = Path(dataset_dir)
+        mapping_file = dataset_path / "parameter_result_mapping.json"
+
+        if not mapping_file.exists():
+            raise FileNotFoundError(f"Parameter-result mapping file not found: {mapping_file}")
+
+        with open(mapping_file, "r") as f:
+            mapping = json.load(f)
+
+        # Also load the numpy arrays for direct access
+        parameters = np.load(dataset_path / "parameters.npy")
+        output_data = np.load(dataset_path / "output_data.npy")
+
+        return {
+            "mapping": mapping,
+            "parameters": parameters,
+            "output_data": output_data,
+            "parameter_names": [list(m["parameters"].keys()) for m in mapping][0] if mapping else [],
+        }
+
 
 class MOOSEMLPipeline:
     """Complete pipeline from MOOSE to ML training"""
@@ -633,97 +656,3 @@ class MOOSEMLPipeline:
             "output_data": output_data,
             "parameter_names": [list(m["parameters"].keys()) for m in mapping][0] if mapping else [],
         }
-
-
-def create_sample_config():
-    """Create a sample configuration file"""
-
-    sample_config = {
-        "moose_executable": "/home/zt/workspace/mymoose/mymoose-opt",
-        "conda_env": "physics",
-        "base_input_file": "/home/zt/workspace/deeplearning-platform/examples/moose_diffusion_template.i",
-        "parameters": {
-            "diffusion_coefficient": {"type": "uniform", "min": 0.1, "max": 2.0},
-            "left_boundary": {"type": "uniform", "min": 0.0, "max": 1.0},
-            "right_boundary": {"type": "uniform", "min": 0.0, "max": 1.0},
-            "source_term": {"type": "uniform", "min": -1.0, "max": 1.0},
-        },
-        "num_samples": 50,
-        "simulation_output_dir": "moose_simulations",
-        "dataset_dir": "moose_ml_dataset",
-        "variables_to_extract": ["u", "x"],
-        "input_variables": ["x"],
-        "output_variables": ["u"],
-        "normalize": True,
-        "model_name": "fno",
-        "epochs": 100,
-        "batch_size": 16,
-        "learning_rate": 0.001,
-        "use_gpu": True,
-    }
-
-    config_path = "/home/zt/workspace/deeplearning-platform/moose_ml_config.json"
-    with open(config_path, "w") as f:
-        json.dump(sample_config, f, indent=2)
-
-    print(f"✓ Sample configuration created: {config_path}")
-    return config_path
-
-
-def main():
-    """Main function for command-line usage"""
-
-    # parser = argparse.ArgumentParser(description="MOOSE to ML Training Pipeline")
-    # parser.add_argument("--config", required=True, help="Configuration file path")
-    # parser.add_argument("--create-sample", action="store_true",
-    #                    help="Create sample configuration file")
-
-    # args = parser.parse_args()
-
-    # if args.create_sample:
-    #     create_sample_config()
-    #     return
-
-    # Run pipeline
-    config = "/home/zt/workspace/deeplearning-platform/moose_ml_config.json"
-    pipeline = MOOSEMLPipeline(config)
-    results = pipeline.run_complete_pipeline()
-
-    print("\n🎉 Pipeline completed successfully!")
-    print(f"1. Review dataset: {results['config_path'].replace('training_config.yaml', '')}")
-    print(f"2. Training config: {results['config_path']}")
-
-    # Ask user if they want to run training now
-    import subprocess
-
-    run_training = input("\nDo you want to run training now? (y/n): ").strip().lower()
-    if run_training == "y":
-        try:
-            cmd = [
-                sys.executable,
-                "/home/zt/workspace/deeplearning-platform/main/train.py",
-                "--config",
-                results["config_path"],
-            ]
-            print(f"Executing: {' '.join(cmd)}")
-            subprocess.run(cmd, check=True)
-            print("✓ Training completed!")
-        except subprocess.CalledProcessError as e:
-            print(f"✗ Training failed: {e}")
-        except FileNotFoundError:
-            print("Training script not found. You can run it manually:")
-            print(f"python main/train.py --config {results['config_path']}")
-    else:
-        print("To run training later:")
-        print(f"python main/train.py --config {results['config_path']}")
-
-
-def extract_mapping_from_dataset(dataset_dir: str) -> Dict[str, Any]:
-    """Standalone function to extract parameter-to-results mapping from a dataset directory"""
-
-    generator = EnhancedMOOSEDataGenerator()
-    return generator.extract_parameter_results_mapping(dataset_dir)
-
-
-if __name__ == "__main__":
-    main()

@@ -1,0 +1,25 @@
+criterion:
+  name: mse
+data:
+  batch_size: 16
+  test_features_path: /home/zt/workspace/deeplearning-platform/test/moose/moose_ml_dataset/parameters.npy
+  test_targets_path: /home/zt/workspace/deeplearning-platform/test/moose/moose_ml_dataset/output_data.npy
+  train_features_path: /home/zt/workspace/deeplearning-platform/test/moose/moose_ml_dataset/parameters.npy
+  train_targets_path: /home/zt/workspace/deeplearning-platform/test/moose/moose_ml_dataset/output_data.npy
+model:
+  name: mlp
+  parameters:
+    in_features: 6
+    layer_sizes: 32
+    num_layers: 3
+    out_features: 11
+optimizer:
+  name: adam
+  parameters:
+    lr: 0.001
+output:
+  history_path: /home/zt/workspace/deeplearning-platform/test/moose/moose_ml_dataset/training_history.json
+  model_path: /home/zt/workspace/deeplearning-platform/test/moose/moose_ml_dataset/trained_model.pth
+training:
+  device: cuda
+  epochs: 100
