@@ -3,29 +3,23 @@ MeshGraphNet Model for Low-Code Deep Learning Platform
 
 This implementation provides a MeshGraphNet architecture suitable for 
 graph-based physics simulations and other applications.
+
+This is a DGL-free implementation using pure PyTorch.
 """
 
 import torch
 import torch.nn as nn
-from typing import Dict, Any, Union, Tuple
+from typing import Dict, Any, Union, Tuple, Optional
 from torch import Tensor
-
-# Try to import DGL, but don't fail if it's not available
-try:
-    import dgl
-    from dgl import DGLGraph
-    DGL_AVAILABLE = True
-except ImportError:
-    DGL_AVAILABLE = False
-    DGLGraph = None
+import torch.nn.functional as F
 
 
 class MeshGraphNet(nn.Module):
     """
-    MeshGraphNet network architecture
+    MeshGraphNet network architecture for graph-based learning
     
-    This implementation follows the structure defined in the model template,
-    with clear hyperparameter descriptions to help users understand their functionality.
+    This implementation uses pure PyTorch tensors and message passing
+    without requiring DGL or other graph libraries.
     """
     
     # Model hyperparameters with descriptions
@@ -116,13 +110,6 @@ class MeshGraphNet(nn.Module):
         """
         super(MeshGraphNet, self).__init__()
         
-        # Check if DGL is available
-        if not DGL_AVAILABLE:
-            raise ImportError(
-                "MeshGraphNet requires the DGL library. Install the "
-                + "desired CUDA version at: \n https://www.dgl.ai/pages/start.html"
-            )
-        
         # Set hyperparameters with defaults
         self.input_dim_nodes = kwargs.get('input_dim_nodes', self.HYPERPARAMETERS['input_dim_nodes']['default'])
         self.input_dim_edges = kwargs.get('input_dim_edges', self.HYPERPARAMETERS['input_dim_edges']['default'])
@@ -141,10 +128,6 @@ class MeshGraphNet(nn.Module):
         self.aggregation = kwargs.get('aggregation', self.HYPERPARAMETERS['aggregation']['default'])
         
         # Initialize model components
-        self._initialize_model_components()
-    
-    def _initialize_model_components(self):
-        """Initialize the model components based on hyperparameters."""
         activation_fn = self._get_activation_fn(self.mlp_activation_fn)
         
         # Edge encoder
@@ -197,27 +180,27 @@ class MeshGraphNet(nn.Module):
         }
         return activations.get(activation_name, nn.ReLU())
     
-    def forward(self, node_features: Tensor, edge_features: Tensor, graph: Union[DGLGraph, list]):
+    def forward(self, node_features: Tensor, edge_features: Tensor, edge_index: Tensor, batch: Optional[Tensor] = None) -> Tensor:
         """
         Forward pass for the MeshGraphNet model.
         
         Args:
             node_features: Node features tensor of shape (num_nodes, input_dim_nodes)
             edge_features: Edge features tensor of shape (num_edges, input_dim_edges)
-            graph: DGL graph or list of DGL graphs
+            edge_index: Edge connectivity tensor of shape (2, num_edges)
+            batch: Batch assignment tensor for batch processing
             
         Returns:
             Output tensor of shape (num_nodes, output_dim)
         """
-        if not DGL_AVAILABLE:
-            raise ImportError(
-                "MeshGraphNet requires the DGL library. Install the "
-                + "desired CUDA version at: \n https://www.dgl.ai/pages/start.html"
-            )
-            
+        # Encode edge and node features
         edge_features = self.edge_encoder(edge_features)
         node_features = self.node_encoder(node_features)
-        node_features = self.processor(node_features, edge_features, graph)
+        
+        # Process through message passing
+        node_features = self.processor(node_features, edge_features, edge_index, batch)
+        
+        # Decode final node features
         output = self.node_decoder(node_features)
         return output
     
@@ -253,11 +236,19 @@ class MeshGraphMLP(nn.Module):
             layers = []
             # Input layer
             layers.append(nn.Linear(input_dim, hidden_dim))
+            if norm_type == "LayerNorm":
+                layers.append(nn.LayerNorm(hidden_dim))
+            elif norm_type == "BatchNorm":
+                layers.append(nn.BatchNorm1d(hidden_dim))
             layers.append(activation_fn)
             
             # Hidden layers
             for _ in range(hidden_layers - 1):
                 layers.append(nn.Linear(hidden_dim, hidden_dim))
+                if norm_type == "LayerNorm":
+                    layers.append(nn.LayerNorm(hidden_dim))
+                elif norm_type == "BatchNorm":
+                    layers.append(nn.BatchNorm1d(hidden_dim))
                 layers.append(activation_fn)
             
             # Output layer
@@ -270,7 +261,7 @@ class MeshGraphMLP(nn.Module):
 
 
 class MeshGraphNetProcessor(nn.Module):
-    """MeshGraphNet processor block"""
+    """MeshGraphNet processor block using pure PyTorch message passing"""
     
     def __init__(
         self,
@@ -284,11 +275,12 @@ class MeshGraphNetProcessor(nn.Module):
     ):
         super(MeshGraphNetProcessor, self).__init__()
         self.processor_size = processor_size
+        self.aggregation = aggregation
         
         # Create processor layers
         self.processor_layers = nn.ModuleList()
         for _ in range(self.processor_size):
-            # Add edge block and node block alternately
+            # Edge update block
             self.processor_layers.append(
                 MeshEdgeBlock(
                     input_dim_node,
@@ -300,13 +292,14 @@ class MeshGraphNetProcessor(nn.Module):
                     aggregation
                 )
             )
+            # Node update block
             self.processor_layers.append(
                 MeshNodeBlock(
                     aggregation,
                     input_dim_node,
                     input_dim_edge,
-                    input_dim_edge,
-                    input_dim_edge,
+                    input_dim_node,
+                    input_dim_node,
                     num_layers_node,
                     activation_fn,
                     "LayerNorm"
@@ -317,17 +310,29 @@ class MeshGraphNetProcessor(nn.Module):
         self,
         node_features: Tensor,
         edge_features: Tensor,
-        graph: Union[DGLGraph, list],
+        edge_index: Tensor,
+        batch: Optional[Tensor] = None
     ) -> Tensor:
-        # Process through all layers
-        for module in self.processor_layers:
-            edge_features, node_features = module(edge_features, node_features, graph)
+        """
+        Forward pass through processor layers.
+        
+        Args:
+            node_features: Node features (num_nodes, node_dim)
+            edge_features: Edge features (num_edges, edge_dim)
+            edge_index: Edge connectivity (2, num_edges)
+            batch: Batch assignment tensor
+            
+        Returns:
+            Updated node features
+        """
+        for layer in self.processor_layers:
+            edge_features, node_features = layer(node_features, edge_features, edge_index, batch)
         
         return node_features
 
 
 class MeshEdgeBlock(nn.Module):
-    """Edge block for MeshGraphNet."""
+    """Edge block for MeshGraphNet using PyTorch message passing"""
     
     def __init__(
         self,
@@ -353,17 +358,41 @@ class MeshEdgeBlock(nn.Module):
     
     def forward(
         self,
-        edge_features: Tensor,
         node_features: Tensor,
-        graph: Union[DGLGraph, list],
+        edge_features: Tensor,
+        edge_index: Tensor,
+        batch: Optional[Tensor] = None
     ) -> Tuple[Tensor, Tensor]:
-        # For simplicity, we'll implement a basic version
-        # In a full implementation, this would use DGL operations
-        return edge_features, node_features
+        """
+        Forward pass for edge block.
+        
+        Args:
+            node_features: Node features (num_nodes, node_dim)
+            edge_features: Edge features (num_edges, edge_dim)
+            edge_index: Edge connectivity (2, num_edges)
+            batch: Batch assignment tensor
+            
+        Returns:
+            Updated edge features and node features
+        """
+        source_nodes = edge_index[0]  # (num_edges,)
+        target_nodes = edge_index[1]  # (num_edges,)
+        
+        # Gather source and target node features
+        source_features = node_features[source_nodes]  # (num_edges, node_dim)
+        target_features = node_features[target_nodes]  # (num_edges, node_dim)
+        
+        # Concatenate features for edge update
+        edge_input = torch.cat([source_features, target_features, edge_features], dim=1)
+        
+        # Update edge features
+        updated_edge_features = self.edge_mlp(edge_input)
+        
+        return updated_edge_features, node_features
 
 
 class MeshNodeBlock(nn.Module):
-    """Node block for MeshGraphNet."""
+    """Node block for MeshGraphNet using PyTorch message passing"""
     
     def __init__(
         self,
@@ -386,14 +415,55 @@ class MeshNodeBlock(nn.Module):
             hidden_dim,
             hidden_layers,
             activation_fn,
+            norm_type,
         )
     
     def forward(
         self,
-        edge_features: Tensor,
         node_features: Tensor,
-        graph: Union[DGLGraph, list],
+        edge_features: Tensor,
+        edge_index: Tensor,
+        batch: Optional[Tensor] = None
     ) -> Tuple[Tensor, Tensor]:
-        # For simplicity, we'll implement a basic version
-        # In a full implementation, this would use DGL operations
-        return edge_features, node_features
+        """
+        Forward pass for node block.
+        
+        Args:
+            node_features: Node features (num_nodes, node_dim)
+            edge_features: Edge features (num_edges, edge_dim)
+            edge_index: Edge connectivity (2, num_edges)
+            batch: Batch assignment tensor
+            
+        Returns:
+            Updated edge features and node features
+        """
+        target_nodes = edge_index[1]  # (num_edges,)
+        
+        # Aggregate edge features for each target node
+        num_nodes = node_features.size(0)
+        
+        if self.aggregation == "sum":
+            aggregated_edges = torch.zeros(num_nodes, edge_features.size(1), device=edge_features.device)
+            aggregated_edges.index_add_(0, target_nodes, edge_features)
+        elif self.aggregation == "mean":
+            aggregated_edges = torch.zeros(num_nodes, edge_features.size(1), device=edge_features.device)
+            counts = torch.zeros(num_nodes, device=edge_features.device)
+            aggregated_edges.index_add_(0, target_nodes, edge_features)
+            counts.index_add_(0, target_nodes, torch.ones_like(target_nodes, dtype=torch.float))
+            counts = counts.clamp(min=1)
+            aggregated_edges = aggregated_edges / counts.unsqueeze(1)
+        elif self.aggregation == "max":
+            aggregated_edges = torch.zeros(num_nodes, edge_features.size(1), device=edge_features.device)
+            aggregated_edges.index_fill_(0, target_nodes, float('-inf'))
+            aggregated_edges.scatter_reduce_(0, target_nodes.unsqueeze(1).expand(-1, edge_features.size(1)), 
+                edge_features, reduce='amax')
+        else:
+            raise ValueError(f"Unsupported aggregation: {self.aggregation}")
+        
+        # Concatenate node features with aggregated edge features
+        node_input = torch.cat([node_features, aggregated_edges], dim=1)
+        
+        # Update node features
+        updated_node_features = self.node_mlp(node_input)
+        
+        return edge_features, updated_node_features
