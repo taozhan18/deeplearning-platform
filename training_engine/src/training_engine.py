@@ -28,7 +28,7 @@ class TrainingEngine:
         self.scheduler = None
         self.device = torch.device(config.get('device', 'cpu'))
         self.epochs = config.get('epochs', 10)
-        self.preprocess_fn = config.get('preprocess_fn', None)
+        self.preprocess_fn = self._load_preprocess_fn(config.get('preprocess_fn', None))
     
     def set_model(self, model: nn.Module):
         """
@@ -337,46 +337,64 @@ class TrainingEngine:
     
     def set_preprocess_fn(self, preprocess_fn):
         """
-        Set custom preprocessing function for multi-source data
+        Set custom preprocessing function from Python file
         
         Args:
-            preprocess_fn: Function to preprocess input data before model forward pass
-                           Should accept data (tensor or dict) and return processed data
+            preprocess_fn: Path to Python file or callable function
         """
-        self.preprocess_fn = preprocess_fn
+        self.preprocess_fn = self._load_preprocess_fn(preprocess_fn)
     
-    @staticmethod
-    def create_concat_preprocess_fn():
+    def _load_preprocess_fn(self, preprocess_spec):
         """
-        Create a default preprocessing function for multi-source data
-        Concatenates multiple data sources along feature dimension
-        
-        Returns:
-            Function that concatenates dict values or returns single tensor
-        """
-        def concat_preprocess(data):
-            if isinstance(data, dict):
-                # Concatenate all sources along feature dimension
-                return torch.cat([data[key] for key in sorted(data.keys())], dim=1)
-            else:
-                # Single source data, return as-is
-                return data
-        return concat_preprocess
-    
-    @staticmethod
-    def create_select_preprocess_fn(source_key: str):
-        """
-        Create a preprocessing function that selects a specific source
+        Load preprocessing function from Python file
         
         Args:
-            source_key: Key to select from multi-source data
+            preprocess_spec: Path to Python file containing preprocess_fn function
             
         Returns:
-            Function that selects specific source or returns single tensor
+            Callable preprocessing function or None
         """
-        def select_preprocess(data):
-            if isinstance(data, dict):
-                return data[source_key]
-            else:
-                return data
-        return select_preprocess
+        if preprocess_spec is None:
+            return None
+        
+        if callable(preprocess_spec):
+            return preprocess_spec
+        
+        if isinstance(preprocess_spec, str):
+            if not preprocess_spec.endswith('.py'):
+                raise ValueError("preprocess_fn must be a path to a Python file ending with .py")
+            return self.load_function_from_file(preprocess_spec, 'preprocess_fn')
+        
+        raise ValueError("preprocess_fn must be a Python file path or callable function")
+    
+    @staticmethod
+    def load_function_from_file(file_path: str, function_name: str):
+        """
+        Static method to load a function from a Python file
+        
+        Args:
+            file_path: Path to the Python file
+            function_name: Name of the function to load
+            
+        Returns:
+            Callable function
+        """
+        import importlib.util
+        import os
+        
+        if not os.path.exists(file_path):
+            raise ValueError(f"Python file not found: {file_path}")
+        
+        try:
+            spec = importlib.util.spec_from_file_location("dynamic_module", file_path)
+            if spec is None or spec.loader is None:
+                raise ValueError(f"Could not load module from file: {file_path}")
+            
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            
+            return getattr(module, function_name)
+        except (AttributeError, ImportError) as e:
+            raise ValueError(f"Could not load function {function_name} from {file_path}: {e}")
+    
+    

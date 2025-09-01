@@ -109,20 +109,22 @@ def test_single_source_training():
 
 
 def test_multi_source_training():
-    """Test training with multi-source data and custom preprocessing"""
+    """Test training with multi-source data and Python file preprocessing"""
     print("Testing multi-source training...")
     
-    # Test with concatenation preprocessing
+    # Use the test Python file for preprocessing
+    test_file_path = "/home/zt/workspace/deeplearning-platform/test/training_engine/test_custom_preprocessing.py"
+    
     config = {
         'epochs': 2,
         'device': 'cpu',
-        'preprocess_fn': TrainingEngine.create_concat_preprocess_fn()
+        'preprocess_fn': test_file_path
     }
     
     training_engine = TrainingEngine(config)
     
-    # Create model that expects concatenated features
-    model = nn.Linear(8, 1)  # 3 + 5 = 8 features after concatenation
+    # Create model that expects concatenated features (3+3=6)
+    model = nn.Linear(6, 1)
     training_engine.set_model(model)
     training_engine.configure_optimizer('adam', lr=0.01)
     training_engine.configure_criterion('mse')
@@ -132,7 +134,7 @@ def test_multi_source_training():
         def __init__(self, size=50):
             self.size = size
             self.x1 = torch.randn(size, 3)  # Source 1: 3 features
-            self.x2 = torch.randn(size, 5)  # Source 2: 5 features
+            self.x2 = torch.randn(size, 3)  # Source 2: 3 features (for concatenation)
             self.targets = torch.randn(size, 1)
             
         def __len__(self):
@@ -156,77 +158,69 @@ def test_multi_source_training():
 
 
 def test_custom_preprocessing():
-    """Test custom preprocessing functions"""
+    """Test custom preprocessing with Python file"""
     print("Testing custom preprocessing...")
     
-    # Create custom preprocessing function
-    def custom_preprocess(data):
-        if isinstance(data, dict):
-            # Weighted combination of sources
-            return 0.7 * data['x1'] + 0.3 * data['x2']
-        return data
+    # Create a simple test Python file with custom preprocessing
+    import tempfile
+    import os
     
-    config = {
-        'epochs': 1,
-        'device': 'cpu',
-        'preprocess_fn': custom_preprocess
-    }
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        f.write("""
+import torch
+
+def preprocess_fn(data):
+    if isinstance(data, dict):
+        # Custom weighted combination of sources
+        return 0.7 * data['x1'] + 0.3 * data['x2']
+    return data
+""")
+        custom_file_path = f.name
     
-    training_engine = TrainingEngine(config)
+    try:
+        config = {
+            'epochs': 1,
+            'device': 'cpu',
+            'preprocess_fn': custom_file_path
+        }
+        
+        training_engine = TrainingEngine(config)
+        
+        # Create model for processed features
+        model = nn.Linear(3, 1)  # After processing, we have 3 features
+        training_engine.set_model(model)
+        training_engine.configure_optimizer('adam', lr=0.01)
+        training_engine.configure_criterion('mse')
+        
+        # Test with multi-source data
+        class MultiSourceDataset(torch.utils.data.Dataset):
+            def __init__(self, size=20):
+                self.size = size
+                self.x1 = torch.randn(size, 3)
+                self.x2 = torch.randn(size, 3)
+                self.targets = torch.randn(size, 1)
+                
+            def __len__(self):
+                return self.size
+                
+            def __getitem__(self, idx):
+                return {'x1': self.x1[idx], 'x2': self.x2[idx]}, self.targets[idx]
+        
+        dataset = MultiSourceDataset(20)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=5, shuffle=True)
+        
+        # Run training
+        history = training_engine.train(loader)
+        
+        assert len(history['train_loss']) == 1
+        
+    finally:
+        # Clean up temporary file
+        os.unlink(custom_file_path)
     
-    # Create model for processed features
-    model = nn.Linear(3, 1)  # After processing, we have 3 features
-    training_engine.set_model(model)
-    training_engine.configure_optimizer('adam', lr=0.01)
-    training_engine.configure_criterion('mse')
-    
-    # Test with same multi-source data
-    class MultiSourceDataset(torch.utils.data.Dataset):
-        def __init__(self, size=20):
-            self.size = size
-            self.x1 = torch.randn(size, 3)
-            self.x2 = torch.randn(size, 3)
-            self.targets = torch.randn(size, 1)
-            
-        def __len__(self):
-            return self.size
-            
-        def __getitem__(self, idx):
-            return {'x1': self.x1[idx], 'x2': self.x2[idx]}, self.targets[idx]
-    
-    dataset = MultiSourceDataset(20)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=5, shuffle=True)
-    
-    # Run training
-    history = training_engine.train(loader)
-    
-    assert len(history['train_loss']) == 1
     print("✓ Custom preprocessing test passed")
 
 
-def test_preprocessing_helper_functions():
-    """Test the built-in preprocessing helper functions"""
-    print("Testing preprocessing helper functions...")
-    
-    # Test concatenation function
-    concat_fn = TrainingEngine.create_concat_preprocess_fn()
-    
-    # Test with dict data
-    data_dict = {'x1': torch.randn(4, 3), 'x2': torch.randn(4, 5)}
-    concatenated = concat_fn(data_dict)
-    assert concatenated.shape == (4, 8)  # 3 + 5 = 8 features
-    
-    # Test with single tensor
-    single_tensor = torch.randn(4, 10)
-    result = concat_fn(single_tensor)
-    assert torch.equal(result, single_tensor)
-    
-    # Test selection function
-    select_fn = TrainingEngine.create_select_preprocess_fn('x1')
-    selected = select_fn(data_dict)
-    assert torch.equal(selected, data_dict['x1'])
-    
-    print("✓ Preprocessing helper functions test passed")
 
 
 def test_classification_training():
@@ -361,6 +355,142 @@ def test_error_handling():
     print("✓ Error handling test passed")
 
 
+def test_python_file_preprocessing():
+    """Test loading preprocessing function from Python file"""
+    print("Testing Python file preprocessing...")
+    
+    # Create a simple test Python file with preprocessing function
+    import tempfile
+    import os
+    
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        f.write("""
+import torch
+
+def preprocess_fn(data):
+    if isinstance(data, dict):
+        return torch.cat([data[key] for key in sorted(data.keys())], dim=1)
+    else:
+        return data
+""")
+        custom_file_path = f.name
+    
+    try:
+        # Test direct file path specification
+        config = {
+            'epochs': 1,
+            'device': 'cpu',
+            'preprocess_fn': custom_file_path
+        }
+        
+        training_engine = TrainingEngine(config)
+        assert training_engine.preprocess_fn is not None
+        
+        # Test with multi-source data
+        model = nn.Linear(8, 1)  # 3 + 5 = 8 features after concatenation
+        training_engine.set_model(model)
+        training_engine.configure_optimizer('adam', lr=0.01)
+        training_engine.configure_criterion('mse')
+        
+        # Create dummy multi-source data
+        class MultiSourceDataset(torch.utils.data.Dataset):
+            def __init__(self, size=20):
+                self.size = size
+                self.x1 = torch.randn(size, 3)
+                self.x2 = torch.randn(size, 5)
+                self.targets = torch.randn(size, 1)
+                
+            def __len__(self):
+                return self.size
+                
+            def __getitem__(self, idx):
+                return {'x1': self.x1[idx], 'x2': self.x2[idx]}, self.targets[idx]
+        
+        dataset = MultiSourceDataset(20)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=5, shuffle=True)
+        
+        # Run training
+        history = training_engine.train(loader)
+        assert len(history['train_loss']) == 1
+        
+    finally:
+        # Clean up temporary file
+        os.unlink(custom_file_path)
+    
+    print("✓ Python file preprocessing test passed")
+
+
+def test_custom_function_from_file():
+    """Test loading custom function from file with specific function name"""
+    print("Testing custom function from file...")
+    
+    # Use the existing test file
+    test_file_path = "/home/zt/workspace/deeplearning-platform/test/training_engine/test_custom_preprocessing.py"
+    
+    # Test loading specific function by name
+    custom_fn = TrainingEngine.load_function_from_file(test_file_path, 'preprocess_fn')
+    assert custom_fn is not None
+    
+    # Test the function works with same-shaped tensors
+    test_data = {'x1': torch.randn(4, 3), 'x2': torch.randn(4, 3)}
+    result = custom_fn(test_data)
+    expected_shape = (4, 6)  # Concatenated shape
+    assert result.shape == expected_shape
+    
+    # Test with training engine using direct file path
+    config = {
+        'epochs': 1,
+        'device': 'cpu',
+        'preprocess_fn': test_file_path
+    }
+    
+    training_engine = TrainingEngine(config)
+    assert training_engine.preprocess_fn is not None
+    
+    print("✓ Custom function from file test passed")
+
+
+def test_file_path_errors():
+    """Test error handling for invalid file paths"""
+    print("Testing file path error handling...")
+    
+    # Test non-existent file
+    try:
+        config = {
+            'epochs': 1,
+            'device': 'cpu',
+            'preprocess_fn': '/nonexistent/path/preprocessing.py'
+        }
+        training_engine = TrainingEngine(config)
+        assert False, "Should raise ValueError for non-existent file"
+    except ValueError as e:
+        assert "not found" in str(e)
+    
+    # Test file without required function
+    import tempfile
+    import os
+    
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        f.write("# Empty file without preprocess function\n")
+        empty_file_path = f.name
+    
+    try:
+        try:
+            config = {
+                'epochs': 1,
+                'device': 'cpu',
+                'preprocess_fn': empty_file_path
+            }
+            training_engine = TrainingEngine(config)
+            assert False, "Should raise ValueError for missing function"
+        except ValueError as e:
+            assert "preprocess" in str(e) or "Could not load function" in str(e)
+    finally:
+        os.unlink(empty_file_path)
+    
+    print("✓ File path error handling test passed")
+
+
 def main():
     """Main test function for training engine"""
     print("🚀 Testing Training Engine Module")
@@ -376,14 +506,17 @@ def main():
         test_multi_source_training()
         test_custom_preprocessing()
         
-        # Helper functions
-        test_preprocessing_helper_functions()
+        # Classification training
         test_classification_training()
         
         # Advanced features
         test_model_save_load()
         test_scheduler_functionality()
         test_error_handling()
+        
+        # Python file preprocessing tests
+        test_python_file_preprocessing()
+        test_custom_function_from_file()
         
         print("\n" + "=" * 50)
         print("🎉 All training engine tests passed!")
