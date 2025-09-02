@@ -12,18 +12,20 @@ data:
 model:
   name: "transolver"
   parameters:
-    space_dim: 2        # Spatial dimension (matches input coordinates)
+    space_dim: 10        # Spatial dimension (matches input features)
     out_dim: 1          # Output dimension
-    n_hidden: 256       # Hidden dimension
-    n_layers: 6         # Number of layers
-    n_head: 8           # Number of attention heads
+    n_hidden: 64        # Hidden dimension
+    n_layers: 2         # Number of layers
+    n_head: 2           # Number of attention heads
     dropout: 0.1
-    H: 25               # Height dimension (matches grid size)
-    W: 25               # Width dimension (matches grid size)
+    fun_dim: 10         # Function dimension (matches input features)
+    H: 10               # Height dimension (matches grid size)
+    W: 10               # Width dimension (matches grid size)
+    mlp_ratio: 1        # MLP ratio
 
 training:
-  epochs: 10
-  device: "cuda"
+  epochs: 2
+  device: "cpu"
   early_stopping: true
   patience: 15
 
@@ -42,7 +44,7 @@ scheduler:
   name: "cosine"
   parameters:
     T_max: 100
-    eta_min: 1e-6
+    eta_min: 0.000001
 
 output:
   model_path: "trained_transolver_model.pth"
