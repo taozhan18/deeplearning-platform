@@ -77,36 +77,15 @@ def main(config_path: str):
 
     # Initialize training engine
     print("Initializing training engine...")
-    training_engine = TrainingEngine(config.get("training", {}))
-    training_engine.set_model(model)
+    training_engine = TrainingEngine(model, config.get("training", {}))
+    # training_engine.set_model(model)
 
-    # Configure optimizer
-    optimizer_config = config.get("optimizer", {})
-    optimizer_name = optimizer_config.get("name", "adam")
-    optimizer_params = optimizer_config.get("parameters", {})
-    training_engine.configure_optimizer(optimizer_name, **optimizer_params)
-
-    # Configure criterion
-    criterion_config = config.get("criterion", {})
-    criterion_name = criterion_config.get("name", "cross_entropy")
-    criterion_params = criterion_config.get("parameters", {})
-    training_engine.configure_criterion(criterion_name, **criterion_params)
-
-    # Configure scheduler if specified
-    scheduler_config = config.get("scheduler", {})
-    if scheduler_config:
-        scheduler_name = scheduler_config.get("name")
-        scheduler_params = scheduler_config.get("parameters", {})
-        training_engine.configure_scheduler(scheduler_name, **scheduler_params)
+    # Model, optimizer, criterion and scheduler are now automatically configured from config
+    # No need to explicitly configure them
 
     # Start training
     print("Starting training...")
     history = training_engine.train(train_loader, test_loader)
-
-    # Save model
-    output_path = config.get("output", {}).get("model_path", "trained_model.pth")
-    training_engine.save_model(output_path)
-    print(f"Model saved to {output_path}")
 
     # Save training history
     history_path = config.get("output", {}).get("history_path", "training_history.json")

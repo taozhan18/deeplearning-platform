@@ -25,22 +25,22 @@ training:
   early_stopping: true
   patience: 20
 
-optimizer:
-  name: "adam"
-  parameters:
-    lr: 0.001
-    weight_decay: 0.0001
+  optimizer:
+    name: "adam"
+    parameters:
+      lr: 0.001
+      weight_decay: 0.0001
 
-criterion:
-  name: "mse"
-  parameters: {}
+  criterion:
+    name: "mse"
+    parameters: {}
 
-scheduler:
-  name: "cosine"
-  parameters:
-    T_max: 100
-    eta_min: 0.000001
+  scheduler:
+    name: "cosine"
+    parameters:
+      T_max: 100
+      eta_min: 0.000001
 
-output:
-  model_path: "trained_fno_model.pth"
-  history_path: "fno_training_history.json"
+  output:
+    model_path: "trained_fno_model.pth"
+    history_path: "fno_training_history.json"

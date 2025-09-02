@@ -29,23 +29,23 @@ training:
   early_stopping: true
   patience: 15
 
-optimizer:
-  name: "adam"
-  parameters:
-    lr: 0.001
-    weight_decay: 0.0001
-    betas: [0.9, 0.98]
+  optimizer:
+    name: "adam"
+    parameters:
+      lr: 0.001
+      weight_decay: 0.0001
+      betas: [0.9, 0.98]
 
-criterion:
-  name: "mse"
-  parameters: {}
+  criterion:
+    name: "mse"
+    parameters: {}
 
-scheduler:
-  name: "cosine"
-  parameters:
-    T_max: 100
-    eta_min: 0.000001
+  scheduler:
+    name: "cosine"
+    parameters:
+      T_max: 100
+      eta_min: 0.000001
 
-output:
-  model_path: "trained_transolver_model.pth"
-  history_path: "transolver_training_history.json"
+  output:
+    model_path: "trained_transolver_model.pth"
+    history_path: "transolver_training_history.json"
