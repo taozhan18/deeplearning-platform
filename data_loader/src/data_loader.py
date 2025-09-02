@@ -204,6 +204,56 @@ class BaseDataset(Dataset):
 class DataLoaderModule:
     """
     Data Loader Module for handling various data formats and preprocessing
+    
+    Configuration Parameters:
+    -------------------------
+    The config dictionary should contain the following parameters:
+    
+    Required Parameters:
+    - train_features_path (str): Path to training features data file
+    - train_targets_path (str): Path to training targets data file
+    - test_features_path (str): Path to testing features data file
+    - test_targets_path (str): Path to testing targets data file
+    
+    Optional Parameters with Defaults:
+    - batch_size (int): Batch size for data loading, default: 32
+    - shuffle (bool): Whether to shuffle training data, default: True
+    - normalize (bool): Whether to normalize the data, default: False
+    - normalization_method (str): Method for normalization ('standard', 'minmax', 'robust'), default: 'standard'
+    - normalize_targets (bool): Whether to normalize target values, default: False
+    - memory_map (bool): Whether to use memory mapping for large files, default: False
+    - train_features_paths (dict): Dictionary of paths for multi-source training features
+    - test_features_paths (dict): Dictionary of paths for multi-source testing features
+    
+    Example Configuration:
+    ----------------------
+    Single source data:
+    config = {
+        "train_features_path": "data/train_features.npy",
+        "train_targets_path": "data/train_targets.npy", 
+        "test_features_path": "data/test_features.npy",
+        "test_targets_path": "data/test_targets.npy",
+        "batch_size": 64,
+        "shuffle": True,
+        "normalize": True,
+        "normalization_method": "standard"
+    }
+    
+    Multi-source data:
+    config = {
+        "train_features_paths": {
+            "pressure": "data/pressure_train.npy",
+            "velocity": "data/velocity_train.npy"
+        },
+        "train_targets_path": "data/train_targets.npy",
+        "test_features_paths": {
+            "pressure": "data/pressure_test.npy", 
+            "velocity": "data/velocity_test.npy"
+        },
+        "test_targets_path": "data/test_targets.npy",
+        "batch_size": 32,
+        "shuffle": True
+    }
     """
 
     SUPPORTED_FORMATS = ["csv", "json", "npy", "npz"]
@@ -213,7 +263,8 @@ class DataLoaderModule:
         Initialize the data loader module
 
         Args:
-            config: Configuration dictionary containing data paths and parameters
+            config: Configuration dictionary containing data paths and parameters.
+                   See class docstring for detailed configuration parameters.
         """
         self.config = config
         self.train_dataset = None

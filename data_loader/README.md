@@ -179,27 +179,49 @@ automation.prepare_ml_dataset()
 ### 主要配置项
 ```yaml
 data:
-  # 单源数据
-  train_features_path: "path/to/features"
-  train_targets_path: "path/to/targets"
+  # 单源数据 (Single Source Data)
+  train_features_path: "path/to/features"     # 训练特征数据路径
+  train_targets_path: "path/to/targets"       # 训练目标数据路径
+  test_features_path: "path/to/features"      # 测试特征数据路径
+  test_targets_path: "path/to/targets"        # 测试目标数据路径
   
-  # 多源数据
-  train_features_paths:
+  # 多源数据 (Multi-source Data)
+  train_features_paths:                       # 多源训练特征数据路径字典
+    source1: "path/to/source1"
+    source2: "path/to/source2"
+  test_features_paths:                        # 多源测试特征数据路径字典
     source1: "path/to/source1"
     source2: "path/to/source2"
   
-  # 数据加载参数
-  batch_size: 32
-  shuffle: true
+  # 数据加载参数 (Data Loading Parameters)
+  batch_size: 32                             # 批次大小，默认值: 32
+  shuffle: true                              # 是否打乱训练数据，默认值: true
   
-  # 标准化设置
-  normalize: true
-  normalization_method: "standard"  # standard, minmax, robust
-  normalize_targets: false
+  # 标准化设置 (Normalization Settings)
+  normalize: true                            # 是否标准化特征数据，默认值: false
+  normalization_method: "standard"           # 标准化方法，可选: standard, minmax, robust，默认值: standard
+  normalize_targets: false                   # 是否标准化目标数据，默认值: false
   
-  # 内存优化
-  memory_map: true  # 大文件内存映射
+  # 内存优化 (Memory Optimization)
+  memory_map: true                           # 是否使用内存映射加载大文件，默认值: false
 ```
+
+### 配置参数详细说明
+
+| 参数名 | 类型 | 必需 | 默认值 | 描述 |
+|-------|------|------|--------|------|
+| train_features_path | str | 单源模式必需 | 无 | 训练特征数据文件路径 |
+| train_targets_path | str | 可选 | None | 训练目标数据文件路径 |
+| test_features_path | str | 单源模式必需 | 无 | 测试特征数据文件路径 |
+| test_targets_path | str | 可选 | None | 测试目标数据文件路径 |
+| train_features_paths | dict | 多源模式必需 | {} | 多源训练特征数据路径字典 |
+| test_features_paths | dict | 多源模式必需 | {} | 多源测试特征数据路径字典 |
+| batch_size | int | 可选 | 32 | 批次大小 |
+| shuffle | bool | 可选 | true | 是否打乱训练数据 |
+| normalize | bool | 可选 | false | 是否标准化特征数据 |
+| normalization_method | str | 可选 | "standard" | 标准化方法 ("standard", "minmax", "robust") |
+| normalize_targets | bool | 可选 | false | 是否标准化目标数据 |
+| memory_map | bool | 可选 | false | 是否使用内存映射加载大文件 |
 
 ## 测试验证
 
