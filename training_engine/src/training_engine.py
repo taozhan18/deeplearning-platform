@@ -211,29 +211,24 @@ class TrainingEngine:
 
     def _configure_from_config(self):
         """Configure optimizer, criterion and scheduler from config"""
-        # Configure optimizer if specified in config
+        # Configure optimizer - use default if not specified
         optimizer_config = self.config.get("optimizer", {})
-        if optimizer_config:
-            optimizer_name = optimizer_config.get("name")
-            if optimizer_name:
-                optimizer_params = optimizer_config.get("parameters", {})
-                self.configure_optimizer(optimizer_name, **optimizer_params)
+        optimizer_name = optimizer_config.get("name", "adam")  # Default to Adam
+        optimizer_params = optimizer_config.get("parameters", {})
+        self.configure_optimizer(optimizer_name, **optimizer_params)
 
-        # Configure criterion if specified in config
+        # Configure criterion - use default if not specified
         criterion_config = self.config.get("criterion", {})
-        if criterion_config:
-            criterion_name = criterion_config.get("name")
-            if criterion_name:
-                criterion_params = criterion_config.get("parameters", {})
-                self.configure_criterion(criterion_name, **criterion_params)
+        criterion_name = criterion_config.get("name", "mse")  # Default to CrossEntropy
+        criterion_params = criterion_config.get("parameters", {})
+        self.configure_criterion(criterion_name, **criterion_params)
 
-        # Configure scheduler if specified in config
+        # Configure scheduler - optional, no default
         scheduler_config = self.config.get("scheduler", {})
-        if scheduler_config:
-            scheduler_name = scheduler_config.get("name")
-            if scheduler_name:
-                scheduler_params = scheduler_config.get("parameters", {})
-                self.configure_scheduler(scheduler_name, **scheduler_params)
+        scheduler_name = scheduler_config.get("name")
+        if scheduler_name:
+            scheduler_params = scheduler_config.get("parameters", {})
+            self.configure_scheduler(scheduler_name, **scheduler_params)
 
     def set_model(self, model: nn.Module):
         """
