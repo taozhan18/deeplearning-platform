@@ -10,10 +10,11 @@
 data_loader/
 ├── README.md                          # 本说明文档
 ├── moose/
-│   └── moose_ml_automation.py        # MOOSE框架机器学习自动化脚本
+│   ├── moose_ml_automation.py        # MOOSE框架机器学习自动化脚本（旧版）
+│   └── moose_data_generator.py       # MOOSE框架数据生成器（新版）
 └── src/
     ├── data_loader.py                # 主要数据加载类实现
-    └── __init__.py                   # 模块初始化文件
+    └── generic_data_generator.py     # 通用数据生成框架
 ```
 
 ## 核心功能
@@ -83,7 +84,88 @@ dataset_info = loader.get_dataset_info()
 print(f"数据源: {dataset_info['train_data_sources']}")
 ```
 
-### 4. MOOSE框架集成
+### 4. 通用数据生成框架
+**位置**: `src/generic_data_generator.py`
+
+**功能**: 提供可扩展的数据生成框架，支持各种求解器和数据提取器
+- 参数空间定义和采样
+- 仿真运行器接口
+- 数据提取器接口
+- ML数据集生成
+
+**使用示例**:
+```python
+from src.generic_data_generator import GenericDataGenerationPipeline
+
+# 配置通用数据生成管道
+config = {
+    "solver": "custom",
+    "solver_config": {
+        "custom_solver_class": "my_module.MySolver",
+        "custom_solver_config": {
+            "executable": "/path/to/my_solver"
+        }
+    },
+    "extractor": "custom",
+    "extractor_config": {
+        "custom_extractor_class": "my_module.MyExtractor"
+    },
+    "base_input_file": "input.template",
+    "simulation_output_dir": "simulations",
+    "dataset_dir": "dataset",
+    "parameters": {
+        "param1": {
+            "type": "uniform",
+            "min": 0.0,
+            "max": 1.0
+        }
+    },
+    "num_samples": 20
+}
+
+pipeline = GenericDataGenerationPipeline(config)
+results = pipeline.run_pipeline()
+```
+
+### 5. MOOSE数据生成器
+**位置**: `moose/moose_data_generator.py`
+
+**功能**: MOOSE特定的数据生成实现
+- MOOSE求解器
+- Exodus文件数据提取器
+- 完整的MOOSE到ML数据管道
+
+**使用示例**:
+```python
+from moose.moose_data_generator import MOOSEDataGeneratorPipeline
+
+# 配置MOOSE数据生成管道
+config = {
+    "solver_config": {
+        "executable": "/path/to/moose-executable",
+        "conda_env": "physics"
+    },
+    "extractor_config": {
+        "variables": ["u", "v", "p"]
+    },
+    "base_input_file": "input.i",
+    "simulation_output_dir": "simulations",
+    "dataset_dir": "dataset",
+    "parameters": {
+        "diffusion_coeff": {
+            "type": "uniform",
+            "min": 0.01,
+            "max": 0.1
+        }
+    },
+    "num_samples": 50
+}
+
+pipeline = MOOSEDataGeneratorPipeline(config=config)
+results = pipeline.run_pipeline()
+```
+
+### 6. MOOSE框架集成
 **位置**: `moose/moose_ml_automation.py`
 
 **功能**: 自动化MOOSE仿真与机器学习集成
@@ -172,6 +254,49 @@ from moose.moose_ml_automation import MooseMLAutomation
 automation = MooseMLAutomation()
 automation.process_simulation_data("moose_simulations/")
 automation.prepare_ml_dataset()
+```
+
+### 4. 使用通用数据生成框架
+```python
+# 使用通用数据生成框架
+from src.generic_data_generator import GenericDataGenerationPipeline
+
+# 定义自定义求解器和提取器
+class MySolver(SimulationRunner):
+    def run_simulation(self, input_file, output_dir, parameters):
+        # 实现自定义仿真逻辑
+        pass
+
+class MyExtractor(DataExtractor):
+    def extract_data(self, file_path, parameters=None):
+        # 实现自定义数据提取逻辑
+        pass
+
+# 配置管道
+config = {
+    "solver": "custom",
+    "solver_config": {
+        "custom_solver_class": "my_module.MySolver"
+    },
+    "extractor": "custom",
+    "extractor_config": {
+        "custom_extractor_class": "my_module.MyExtractor"
+    },
+    "base_input_file": "input.template",
+    "simulation_output_dir": "simulations",
+    "dataset_dir": "dataset",
+    "parameters": {
+        "param1": {
+            "type": "uniform",
+            "min": 0.0,
+            "max": 1.0
+        }
+    },
+    "num_samples": 10
+}
+
+pipeline = GenericDataGenerationPipeline(config)
+results = pipeline.run_pipeline()
 ```
 
 ## 配置参数详解

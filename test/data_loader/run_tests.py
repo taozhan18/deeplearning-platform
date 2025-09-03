@@ -1,77 +1,156 @@
 #!/usr/bin/env python3
 """
-Test runner for data loader module
+Test runner for the data loader module.
+
+This script runs all tests for the data loader module and reports the results.
 """
 
-import os
 import sys
+import os
 import subprocess
-import tempfile
-import shutil
-import numpy as np
+from pathlib import Path
 
+# Add the project root to the path so we can import modules
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
-def run_pytest():
-    """Run pytest with verbose output"""
-    test_dir = os.path.dirname(__file__)
-    test_file = os.path.join(test_dir, "test_data_loader.py")
-
-    print("Running data loader tests...")
-    print("=" * 50)
-
+def run_test_file(test_file: str) -> bool:
+    """
+    Run a single test file and return whether it passed.
+    
+    Args:
+        test_file: Path to the test file to run
+        
+    Returns:
+        True if the test passed, False otherwise
+    """
+    print(f"Running {test_file}...")
+    
     try:
-        # Run pytest
+        # Run the test file directly
         result = subprocess.run(
-            ["python", "-m", "pytest", test_file, "-v", "--tb=short"], capture_output=False, text=True
+            [sys.executable, test_file],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
         )
-
+        
         if result.returncode == 0:
-            print("\n" + "=" * 50)
-            print("All tests passed! ✓")
+            print(f"✓ {test_file} passed")
+            if result.stdout:
+                print(result.stdout)
+            return True
         else:
-            print(f"\nTests failed with return code: {result.returncode}")
-
-    except FileNotFoundError:
-        print("Pytest not found. Running basic tests...")
-        run_basic_tests()
-
-
-def run_basic_tests():
-    """Run basic functionality tests"""
-    print("Running basic functionality tests...")
-
-    # Add src to path
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../data_loader/src"))
-
-    try:
-        from data_loader import DataLoaderModule, DataNormalizer, BaseDataset, MultiSourceDataset
-
-        # Test DataNormalizer
-        print("Testing DataNormalizer...")
-        normalizer = DataNormalizer("standard")
-        data = {"test": np.array([[1, 2], [3, 4]])}
-        normalized = normalizer.fit_transform(data)
-        print(f"✓ DataNormalizer works: {normalized['test'].shape}")
-
-        # Test BaseDataset
-        print("Testing BaseDataset...")
-        dataset = BaseDataset(np.array([[1, 2], [3, 4]]), np.array([0, 1]))
-        assert len(dataset) == 2
-        print(f"✓ BaseDataset works: length={len(dataset)}")
-
-        # Test MultiSourceDataset
-        print("Testing MultiSourceDataset...")
-        data_dict = {"x1": np.array([[1, 2], [3, 4]]), "x2": np.array([[5], [6]])}
-        ms_dataset = MultiSourceDataset(data_dict, np.array([0, 1]))
-        assert len(ms_dataset) == 2
-        print(f"✓ MultiSourceDataset works: length={len(ms_dataset)}")
-
-        print("\nAll basic tests passed! ✓")
-
+            print(f"✗ {test_file} failed")
+            if result.stdout:
+                print("STDOUT:")
+                print(result.stdout)
+            if result.stderr:
+                print("STDERR:")
+                print(result.stderr)
+            return False
+            
+    except subprocess.TimeoutExpired:
+        print(f"✗ {test_file} timed out")
+        return False
     except Exception as e:
-        print(f"Error in basic tests: {e}")
-        sys.exit(1)
+        print(f"✗ {test_file} failed with exception: {e}")
+        return False
 
+def run_pytest_test(test_file: str, test_function: str = None) -> bool:
+    """
+    Run a test file using pytest.
+    
+    Args:
+        test_file: Path to the test file to run
+        test_function: Optional specific test function to run
+        
+    Returns:
+        True if the test passed, False otherwise
+    """
+    print(f"Running {test_file} with pytest...")
+    
+    try:
+        # Build command
+        cmd = [sys.executable, "-m", "pytest", test_file, "-v"]
+        if test_function:
+            cmd.extend(["::" + test_function])
+        
+        result = subprocess.run(
+            cmd,
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        
+        if result.returncode == 0:
+            print(f"✓ {test_file} passed")
+            if result.stdout:
+                print(result.stdout)
+            return True
+        else:
+            print(f"✗ {test_file} failed")
+            if result.stdout:
+                print("STDOUT:")
+                print(result.stdout)
+            if result.stderr:
+                print("STDERR:")
+                print(result.stderr)
+            return False
+            
+    except subprocess.TimeoutExpired:
+        print(f"✗ {test_file} timed out")
+        return False
+    except Exception as e:
+        print(f"✗ {test_file} failed with exception: {e}")
+        return False
+
+def main():
+    """
+    Main function to run all data loader tests.
+    """
+    print("Running Data Loader Tests")
+    print("=" * 50)
+    
+    # Get the directory containing this script
+    test_dir = Path(__file__).parent
+    
+    # List of test files to run
+    test_files = [
+        "test_data_loader.py",
+        "test_custom_data_generator.py",
+        "integration_test.py"
+    ]
+    
+    # Track test results
+    passed = 0
+    failed = 0
+    
+    # Run each test file
+    for test_file in test_files:
+        test_path = test_dir / test_file
+        if test_path.exists():
+            if run_test_file(str(test_path)):
+                passed += 1
+            else:
+                failed += 1
+        else:
+            print(f"⚠️  {test_file} not found, skipping")
+            failed += 1
+    
+    # Summary
+    print("\n" + "=" * 50)
+    print(f"Test Results: {passed} passed, {failed} failed")
+    
+    if failed == 0:
+        print("🎉 All tests passed!")
+        return True
+    else:
+        print("❌ Some tests failed!")
+        return False
 
 if __name__ == "__main__":
-    run_pytest()
+    success = main()
+    sys.exit(0 if success else 1)
