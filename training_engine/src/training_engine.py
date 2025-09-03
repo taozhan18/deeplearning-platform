@@ -479,83 +479,43 @@ class TrainingEngine:
         total = 0
 
         for batch_idx, (data, target) in enumerate(train_loader):
-            # Handle device placement for both single tensors and dicts
-            if isinstance(data, dict):
-                data = {key: value.to(self.device) for key, value in data.items()}
-            else:
-                data = data.to(self.device)
-            target = target.to(self.device)
-
-            # Special handling for different criterion types
-            if isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
-                # For classification, target should be Long type
-                if target.dtype != torch.long:
-                    target = target.long()
-            elif isinstance(self.criterion, (nn.MSELoss, nn.L1Loss)):
-                # For regression, target should be Float type
-                if target.dtype != torch.float:
-                    target = target.float()
-            elif isinstance(self.criterion, (nn.BCELoss, nn.BCEWithLogitsLoss)):
-                # For binary classification, target should be Float type
-                if target.dtype != torch.float:
-                    target = target.float()
-
+            # Handle device placement and model forward pass
             self.optimizer.zero_grad()
 
-            # Handle custom preprocessing for multi-source data
-            if self.preprocess_fn is not None:
-                processed_data = self.preprocess_fn(data)
-                output = self.model(processed_data)
+            # Handle graph data (MeshGraphNet)
+            if isinstance(data, dict) and all(key in data for key in ["node_features", "edge_index", "edge_features"]):
+                # Graph data for MeshGraphNet - handle batch dimension properly
+                node_features = data["node_features"].to(self.device)
+                edge_index = data["edge_index"].to(self.device)
+                edge_features = data["edge_features"].to(self.device)
+                target = target.to(self.device)
+                
+                # Ensure correct dimensions (remove batch dimension if present)
+                if node_features.dim() == 3 and node_features.size(0) == 1:
+                    node_features = node_features.squeeze(0)
+                if edge_index.dim() == 3 and edge_index.size(0) == 1:
+                    edge_index = edge_index.squeeze(0)
+                if edge_features.dim() == 3 and edge_features.size(0) == 1:
+                    edge_features = edge_features.squeeze(0)
+                if target.dim() == 3 and target.size(0) == 1:
+                    target = target.squeeze(0)
+                
+                # Handle custom preprocessing for graph data
+                if self.preprocess_fn is not None:
+                    processed_data = self.preprocess_fn({
+                        "node_features": node_features,
+                        "edge_index": edge_index,
+                        "edge_features": edge_features
+                    })
+                    if isinstance(processed_data, dict):
+                        output = self.model(**processed_data)
+                    else:
+                        output = self.model(processed_data)
+                else:
+                    # Direct forward pass for MeshGraphNet
+                    output = self.model(node_features, edge_features, edge_index)
             else:
-                # Default behavior: direct model forward pass
-                output = self.model(data)
-
-            loss = self.criterion(output, target)
-            loss.backward()
-            self.optimizer.step()
-
-            total_loss += loss.item()
-            _, predicted = output.max(1)
-
-            # Handle accuracy calculation based on criterion type
-            if isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
-                total += target.size(0)
-                correct += predicted.eq(target).sum().item()
-            elif isinstance(self.criterion, (nn.MSELoss, nn.L1Loss)):
-                # For regression, we don't calculate accuracy in the traditional sense
-                total += target.size(0)
-                correct += 0  # Not applicable for regression
-            elif isinstance(self.criterion, (nn.BCELoss, nn.BCEWithLogitsLoss)):
-                # For binary classification
-                total += target.size(0)
-                predicted_binary = (torch.sigmoid(output) > 0.5).float()
-                correct += predicted_binary.eq(target).sum().item()
-
-        avg_loss = total_loss / len(train_loader)
-        accuracy = 100.0 * correct / total if total > 0 else 0.0
-        return avg_loss, accuracy
-
-    def validate_epoch(self, test_loader):
-        """
-        Validate for one epoch
-
-        Args:
-            test_loader: DataLoader for test data
-
-        Returns:
-            Tuple of (average_loss, accuracy)
-        """
-        if self.model is None or self.criterion is None:
-            raise ValueError("Model and criterion must be configured before validation")
-
-        self.model.eval()
-        total_loss = 0.0
-        correct = 0
-        total = 0
-
-        with torch.no_grad():
-            for batch_idx, (data, target) in enumerate(test_loader):
-                # Handle device placement for both single tensors and dicts
+                # Standard data handling
                 if isinstance(data, dict):
                     data = {key: value.to(self.device) for key, value in data.items()}
                 else:
@@ -584,23 +544,130 @@ class TrainingEngine:
                     # Default behavior: direct model forward pass
                     output = self.model(data)
 
+            loss = self.criterion(output, target)
+            loss.backward()
+            self.optimizer.step()
+
+            total_loss += loss.item()
+            
+            # Handle accuracy calculation
+            if isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
+                _, predicted = output.max(1)
+                total += target.size(0)
+                correct += predicted.eq(target).sum().item()
+            elif isinstance(self.criterion, (nn.MSELoss, nn.L1Loss)):
+                # For regression, calculate relative accuracy
+                total += target.numel()
+                correct += 0  # Not applicable in traditional sense
+            elif isinstance(self.criterion, (nn.BCELoss, nn.BCEWithLogitsLoss)):
+                # For binary classification
+                predicted_binary = (torch.sigmoid(output) > 0.5).float()
+                total += target.numel()
+                correct += predicted_binary.eq(target).sum().item()
+
+        avg_loss = total_loss / len(train_loader)
+        accuracy = 100.0 * correct / total if total > 0 else 0.0
+        return avg_loss, accuracy
+
+    def validate_epoch(self, test_loader):
+        """
+        Validate for one epoch
+
+        Args:
+            test_loader: DataLoader for test data
+
+        Returns:
+            Tuple of (average_loss, accuracy)
+        """
+        if self.model is None or self.criterion is None:
+            raise ValueError("Model and criterion must be configured before validation")
+
+        self.model.eval()
+        total_loss = 0.0
+        correct = 0
+        total = 0
+
+        with torch.no_grad():
+            for batch_idx, (data, target) in enumerate(test_loader):
+                # Handle graph data (MeshGraphNet)
+                if isinstance(data, dict) and all(key in data for key in ["node_features", "edge_index", "edge_features"]):
+                    # Graph data for MeshGraphNet - handle batch dimension properly
+                    node_features = data["node_features"].to(self.device)
+                    edge_index = data["edge_index"].to(self.device)
+                    edge_features = data["edge_features"].to(self.device)
+                    target = target.to(self.device)
+                    
+                    # Ensure correct dimensions (remove batch dimension if present)
+                    if node_features.dim() == 3 and node_features.size(0) == 1:
+                        node_features = node_features.squeeze(0)
+                    if edge_index.dim() == 3 and edge_index.size(0) == 1:
+                        edge_index = edge_index.squeeze(0)
+                    if edge_features.dim() == 3 and edge_features.size(0) == 1:
+                        edge_features = edge_features.squeeze(0)
+                    if target.dim() == 3 and target.size(0) == 1:
+                        target = target.squeeze(0)
+                    
+                    # Handle custom preprocessing for graph data
+                    if self.preprocess_fn is not None:
+                        processed_data = self.preprocess_fn({
+                            "node_features": node_features,
+                            "edge_index": edge_index,
+                            "edge_features": edge_features
+                        })
+                        if isinstance(processed_data, dict):
+                            output = self.model(**processed_data)
+                        else:
+                            output = self.model(processed_data)
+                    else:
+                        # Direct forward pass for MeshGraphNet
+                        output = self.model(node_features, edge_features, edge_index)
+                else:
+                    # Standard data handling
+                    if isinstance(data, dict):
+                        data = {key: value.to(self.device) for key, value in data.items()}
+                    else:
+                        data = data.to(self.device)
+                    target = target.to(self.device)
+
+                    # Special handling for different criterion types
+                    if isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
+                        # For classification, target should be Long type
+                        if target.dtype != torch.long:
+                            target = target.long()
+                    elif isinstance(self.criterion, (nn.MSELoss, nn.L1Loss)):
+                        # For regression, target should be Float type
+                        if target.dtype != torch.float:
+                            target = target.float()
+                    elif isinstance(self.criterion, (nn.BCELoss, nn.BCEWithLogitsLoss)):
+                        # For binary classification, target should be Float type
+                        if target.dtype != torch.float:
+                            target = target.float()
+
+                    # Handle custom preprocessing for multi-source data
+                    if self.preprocess_fn is not None:
+                        processed_data = self.preprocess_fn(data)
+                        output = self.model(processed_data)
+                    else:
+                        # Default behavior: direct model forward pass
+                        output = self.model(data)
+
                 loss = self.criterion(output, target)
 
                 total_loss += loss.item()
-                _, predicted = output.max(1)
-
-                # Handle accuracy calculation based on criterion type
+                
+                # Handle accuracy calculation
                 if isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
+                    _, predicted = output.max(1)
                     total += target.size(0)
                     correct += predicted.eq(target).sum().item()
                 elif isinstance(self.criterion, (nn.MSELoss, nn.L1Loss)):
-                    # For regression, we don't calculate accuracy in the traditional sense
-                    total += target.size(0)
-                    correct += 0  # Not applicable for regression
+                    # For regression, calculate relative accuracy
+                    total += target.numel()
+                    correct += 0  # Not applicable in traditional sense
                 elif isinstance(self.criterion, (nn.BCELoss, nn.BCEWithLogitsLoss)):
                     # For binary classification
-                    total += target.size(0)
                     predicted_binary = (torch.sigmoid(output) > 0.5).float()
+                    total += target.numel()
                     correct += predicted_binary.eq(target).sum().item()
 
         avg_loss = total_loss / len(test_loader)

@@ -1,10 +1,15 @@
 # MeshGraphNet Configuration for Graph Structure Data
 # Note: MeshGraphNet expects node features and edge connectivity
 data:
+  data_type: "graph"
   train_features_path: "graph_train_features.npz"
   train_targets_path: "graph_train_targets.npz"
+  train_edge_index_path: "graph_train_edge_index.npz"
+  train_edge_features_path: "graph_train_edge_features.npz"
   test_features_path: "graph_test_features.npz"
   test_targets_path: "graph_test_targets.npz"
+  test_edge_index_path: "graph_test_edge_index.npz"
+  test_edge_features_path: "graph_test_edge_features.npz"
   batch_size: 16
   shuffle: true
   normalize: false

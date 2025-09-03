@@ -273,32 +273,36 @@ def test_meshgraphnet_integration():
     print("🧪 Testing MeshGraphNet Integration...")
     
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Create test data - simplified approach for integration testing
+        # Create test data - create multiple graphs for training/testing
         num_nodes = 50
         num_edges = 100
+        num_train_graphs = 10
+        num_test_graphs = 5
         
-        # Create single graph data (flatten batch dimension)
-        # Node features: (num_nodes, feature_dim)
-        node_features = np.random.randn(num_nodes, 10).astype(np.float32)
-        # Edge features: (num_edges, feature_dim)
-        edge_features = np.random.randn(num_edges, 3).astype(np.float32)
-        # Edge index: (2, num_edges) - connectivity
-        edge_index = np.random.randint(0, num_nodes, (2, num_edges)).astype(np.int64)
-        # Targets: (num_nodes, output_dim)
-        targets = np.random.randn(num_nodes, 1).astype(np.float32)
+        # Create training graphs
+        train_node_features = np.random.randn(num_train_graphs, num_nodes, 10).astype(np.float32)
+        train_edge_features = np.random.randn(num_train_graphs, num_edges, 3).astype(np.float32)
+        train_edge_index = np.random.randint(0, num_nodes, (num_train_graphs, 2, num_edges)).astype(np.int64)
+        train_targets = np.random.randn(num_train_graphs, num_nodes, 1).astype(np.float32)
+        
+        # Create testing graphs
+        test_node_features = np.random.randn(num_test_graphs, num_nodes, 10).astype(np.float32)
+        test_edge_features = np.random.randn(num_test_graphs, num_edges, 3).astype(np.float32)
+        test_edge_index = np.random.randint(0, num_nodes, (num_test_graphs, 2, num_edges)).astype(np.int64)
+        test_targets = np.random.randn(num_test_graphs, num_nodes, 1).astype(np.float32)
         
         # Save data in format expected by graph data loader
         data_dir = os.path.join(temp_dir, 'data')
         os.makedirs(data_dir, exist_ok=True)
         
-        np.savez(os.path.join(data_dir, 'graph_train_features.npz'), data=node_features)
-        np.savez(os.path.join(data_dir, 'graph_train_edge_index.npz'), data=edge_index)
-        np.savez(os.path.join(data_dir, 'graph_train_edge_features.npz'), data=edge_features)
-        np.savez(os.path.join(data_dir, 'graph_train_targets.npz'), data=targets)
-        np.savez(os.path.join(data_dir, 'graph_test_features.npz'), data=node_features)
-        np.savez(os.path.join(data_dir, 'graph_test_edge_index.npz'), data=edge_index)
-        np.savez(os.path.join(data_dir, 'graph_test_edge_features.npz'), data=edge_features)
-        np.savez(os.path.join(data_dir, 'graph_test_targets.npz'), data=targets)
+        np.savez(os.path.join(data_dir, 'graph_train_features.npz'), data=train_node_features)
+        np.savez(os.path.join(data_dir, 'graph_train_edge_index.npz'), data=train_edge_index)
+        np.savez(os.path.join(data_dir, 'graph_train_edge_features.npz'), data=train_edge_features)
+        np.savez(os.path.join(data_dir, 'graph_train_targets.npz'), data=train_targets)
+        np.savez(os.path.join(data_dir, 'graph_test_features.npz'), data=test_node_features)
+        np.savez(os.path.join(data_dir, 'graph_test_edge_index.npz'), data=test_edge_index)
+        np.savez(os.path.join(data_dir, 'graph_test_edge_features.npz'), data=test_edge_features)
+        np.savez(os.path.join(data_dir, 'graph_test_targets.npz'), data=test_targets)
         
         # Update config file paths
         config_path = os.path.join(os.path.dirname(__file__), 'meshgraphnet', 'config_meshgraphnet.yaml')
