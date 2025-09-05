@@ -84,6 +84,14 @@ class ModelManager:
         except ImportError as e:
             print(f"Warning: MeshGraphNet model could not be registered: {e}")
 
+        # Register FieldToScalarNet model
+        try:
+            from CNNAtention.CNNAtention import CNNAtention
+
+            self._register_model("CNNAtention", CNNAtention, CNNAtention.HYPERPARAMETERS)
+        except ImportError as e:
+            print(f"Warning: CNNAtention model could not be registered: {e}")
+
     def _register_model(self, name: str, model_class, hyperparameters: Dict[str, Any]):
         """
         Register a model with its class and hyperparameters.
